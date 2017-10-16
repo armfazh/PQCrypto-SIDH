@@ -8,12 +8,12 @@ This software library is a C-language + optimized assembly code that supports an
 ----
 
 ### Additional contributions
- * Improved P+[k]Q operation. 
-    * A right-to-left Ladder replacing 3-point ladder of De Feo et al. to accelerate Shared Secret.
-    * A look-up table algorithm using a Right2Left Ladder to accelerate Key Generation.
- * New point tripling formulas for Montgomery curves. Improvement of 1M-1S-1A operations in Fp2. 
- * Efficient arithmetic operations for Fp and Fp2 using MULX and ADCX/ADOX instructions.
-    * Around 25\% of improvement on Haswell and Skylake processors. 
+ * Improved Calculation of the P+[k]Q operation. 
+    * A right-to-left ladder replaces the 3-point ladder algorithm of De Feo et al. accelerating the shared secret phase.
+    * A right-to-left ladder with precomputation tables that accelerate key generation phase.
+ * New point tripling formulas for Montgomery curves. An improvement of 1M-1S-1A operations in Fp2. 
+ * Efficient implementation of arithmetic operations of Fp and Fp2 using MULX and ADCX/ADOX instructions.
+    * Around 25% of improvement on Haswell and Skylake processors. 
 
 ---
 
@@ -73,7 +73,7 @@ If you want to obtain a detailed benchamrk of the operations in Fp, Fp2, and ECC
 ```sh
  $ bin/arith_haswell
 ```
-Optionally, you can also run ```kex_skylake```  or ```kex_native```. 
+Optionally, you can also run ```arith_skylake```  or ```arith_native```. 
 
 
 ----
@@ -113,3 +113,6 @@ GNU Lesser General Public License v3.0 ([LICENSE](https://www.gnu.org/licenses/l
 To report some issues or comments of this project, please use the issues webpage [[here](https://github.com/armfazh/flor-sidh-x64/issues)]. 
 
 ----
+
+
+
