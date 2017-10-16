@@ -40,7 +40,7 @@ int64_t cpucycles(void)
 #elif (OS_TARGET == OS_LINUX) && (TARGET == TARGET_AMD64 || TARGET == TARGET_x86)
     unsigned int hi, lo;
 
-    asm volatile ("rdtsc\n\t" : "=a" (lo), "=d"(hi));
+    __asm__ __volatile__ ("rdtsc\n\t" : "=a" (lo), "=d"(hi));
     return ((int64_t)lo) | (((int64_t)hi) << 32);
 #elif (OS_TARGET == OS_LINUX) && (TARGET == TARGET_ARM || TARGET == TARGET_ARM64)
     struct timespec time;
@@ -107,7 +107,8 @@ static __inline void sub751_test(felm_t a, felm_t b, felm_t c)
 void fprandom751_test(felm_t a)
 { // Generating a pseudo-random field element in [0, p751-1] 
   // SECURITY NOTE: distribution is not fully uniform. TO BE USED FOR TESTING ONLY.
-    int i, diff = 768-751;
+    unsigned int i;
+    int diff = 768-751;
     unsigned char* string = NULL;
 
     string = (unsigned char*)a;

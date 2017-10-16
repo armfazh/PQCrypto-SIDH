@@ -51,6 +51,7 @@
 //  Operation: c [reg_p3] = a [reg_p1] + b [reg_p2]
 //*********************************************************************** 
 .global fpadd751_asm
+.p2align 4
 fpadd751_asm:
   push   r12
   push   r13
@@ -192,6 +193,7 @@ fpadd751_asm:
 //  Operation: c [reg_p3] = a [reg_p1] - b [reg_p2]
 //*********************************************************************** 
 .global fpsub751_asm
+.p2align 4
 fpsub751_asm:
   push   r12
   push   r13
@@ -307,6 +309,7 @@ fpsub751_asm:
 //  NOTE: a=c or b=c are not allowed
 //***********************************************************************
 .global mul751_asm
+.p2align 4
 mul751_asm:
   push   r12
   push   r13
@@ -1250,6 +1253,7 @@ mul751_asm:
 //  NOTE: a=c is not allowed
 //*********************************************************************** 
 .global rdc751_asm
+.p2align 4
 rdc751_asm:
   push   r12
   push   r13 
@@ -1869,6 +1873,7 @@ rdc751_asm:
 //  Operation: c [reg_p3] = a [reg_p1] + b [reg_p2]
 //*********************************************************************** 
 .global mp_add751_asm
+.p2align 4
 mp_add751_asm:
   push   r12
   push   r13
@@ -1928,6 +1933,7 @@ mp_add751_asm:
 //  Operation: c [reg_p3] = a [reg_p1] + b [reg_p2]
 //*********************************************************************** 
 .global mp_add751x2_asm
+.p2align 4
 mp_add751x2_asm:
   push   r12
   push   r13

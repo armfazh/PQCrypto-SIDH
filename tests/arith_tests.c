@@ -7,6 +7,18 @@
 *
 * Abstract: testing code for field arithmetic, elliptic curve and isogeny functions
 *
+*********************************************************************************************
+* Update: New functions for benchmark ECC operations
+*
+* This is derived work authored by:
+*    Faz-Hernández, Lopez, Ochoa-Jiménez and Rodríquez-Henríquez.
+*
+* Contributions:
+*  - New function to benchmark ECC operations
+*
+* Copyright (c) Sept,2017 by Armando Faz <armfazh@ic.unicamp.br>.
+* Institute of Computing.
+* University of Campinas, Brazil.
 *********************************************************************************************/
 
 #include "../SIDH.h"
@@ -29,13 +41,14 @@ extern const unsigned int splits_Bob[MAX_Bob];
     #define ECPH_TEST_LOOPS        10       // Number of iterations per Pohlig-Hellman test
     #define COMP_TEST_LOOPS         5       // Number of iterations per Pohlig-Hellman test
 #else
-    #define BENCH_LOOPS        100000 
+    #define BENCH_LOOPS        300000 
     #define SMALL_BENCH_LOOPS   10000       
-    #define TEST_LOOPS            100       
-    #define ECPT_TEST_LOOPS        20       
-    #define ECPAIR_TEST_LOOPS      20       
-    #define ECPH_TEST_LOOPS        50       
-    #define COMP_TEST_LOOPS        10       
+    #define TINY_BENCH_LOOPS      500
+    #define TEST_LOOPS            100
+    #define ECPT_TEST_LOOPS        50
+    #define ECPAIR_TEST_LOOPS      50       
+    #define ECPH_TEST_LOOPS       100       
+    #define COMP_TEST_LOOPS       100       
 #endif
 
 
@@ -429,6 +442,18 @@ bool fp_run()
     }
     printf("  GF(p) multiplication runs in .................................... %7lld ", cycles/BENCH_LOOPS); print_unit;
     printf("\n");
+    
+    // GF(p) squaring using p751
+    cycles = 0;
+    for (n=0; n<BENCH_LOOPS; n++)
+    {
+        cycles1 = cpucycles(); 
+        fpsqr751_mont(a, c);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  GF(p) squaring runs in .......................................... %7lld ", cycles/BENCH_LOOPS); print_unit;
+    printf("\n");
 
     // GF(p) reduction using p751
     cycles = 0;
@@ -567,6 +592,8 @@ bool ecisog_run(PCurveIsogenyStaticData CurveIsogenyData)
     unsigned long long cycles, cycles1, cycles2;
     f2elm_t A24, C24, A4, A, C, Aout, Cout, coeff[5];
     point_proj_t P, Q;
+    point_basefield_proj_t P_base, Q_base;
+    felm_t A_base,C_base;
     PCurveIsogenyStruct CurveIsogeny = {0};
     CRYPTO_STATUS Status = CRYPTO_SUCCESS;
 
@@ -648,11 +675,25 @@ bool ecisog_run(PCurveIsogenyStaticData CurveIsogenyData)
         fp2random751_test(A4); fp2random751_test(C);
 
         cycles1 = cpucycles(); 
-        xTPL(P, Q, A4, C);
+        original_xTPL(P, Q, A4, C);
         cycles2 = cpucycles();
         cycles = cycles+(cycles2-cycles1);
     }
     printf("  Point tripling runs in .......................................... %7lld ", cycles/BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    // Point tripling
+    cycles = 0;
+    for (n=0; n<BENCH_LOOPS; n++)
+    {
+        fp2random751_test(A4); fp2random751_test(C);
+
+        cycles1 = cpucycles(); 
+        xTPL(P, Q, A4, C);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  Point tripling (New) runs in .................................... %7lld ", cycles/BENCH_LOOPS); print_unit;
     printf("\n");
 
     // 3-isogeny of a projective point
@@ -681,9 +722,222 @@ bool ecisog_run(PCurveIsogenyStaticData CurveIsogenyData)
     printf("  3-isogeny evaluation at projective point runs in ................ %7lld ", cycles/BENCH_LOOPS); print_unit;
     printf("\n");
 
+    cycles = 0;
+    for (n=0; n<BENCH_LOOPS; n++)
+    {
+        fp2random751_test(P->X);fp2random751_test(Q->X);
+        fp2random751_test(P->Z);fp2random751_test(Q->Z);
+
+        cycles1 = cpucycles();
+        xADD(P, Q, A);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  XADD at projective point runs in ................................ %7lld ", cycles/BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    cycles = 0;
+    for (n=0; n<BENCH_LOOPS; n++)
+    {
+        fp2random751_test(P->X);fp2random751_test(Q->X);
+        fp2random751_test(P->Z);fp2random751_test(Q->Z);
+
+        cycles1 = cpucycles();
+        xDBL(P, Q, A24,C24);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  xDBL at projective point runs in ................................ %7lld ", cycles/BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    cycles = 0;
+    for (n=0; n<BENCH_LOOPS; n++)
+    {
+        fprandom751_test(P_base->X);fprandom751_test(Q_base->X);
+        fprandom751_test(P_base->Z);fprandom751_test(Q_base->Z);
+
+        cycles1 = cpucycles();
+        xDBLADD_basefield(P_base, Q_base, A_base , C_base);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  xDBLADD_base at projective point runs in ........................ %7lld ", cycles/BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    cycles = 0;
+    for (n=0; n<BENCH_LOOPS; n++)
+    {
+        fp2random751_test(P->X);fp2random751_test(Q->X);
+        fp2random751_test(P->Z);fp2random751_test(Q->Z);
+
+        cycles1 = cpucycles();
+        xDBLADD(P,Q,A,A24);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  xDBLADD      at projective point runs in ........................ %7lld ", cycles/BENCH_LOOPS); print_unit;
+    printf("\n");
+
 cleanup:
     SIDH_curve_free(CurveIsogeny);
     
+    return OK;
+}
+
+bool ec_mult_run(PCurveIsogenyStaticData CurveIsogenyData)
+{
+    bool OK = true;
+    int n;
+    unsigned long long cycles, cycles1, cycles2;
+    f2elm_t xP,xQ,xPQ,A,A24;
+    digit_t k[(CurveIsogenyData->owordbits+7)/8];
+
+    point_affine aP,aQ;
+    point_proj_t P,Q;
+    point_full_proj R;
+    point_basefield_t P_base;
+    PCurveIsogenyStruct CurveIsogeny = {0};
+    CRYPTO_STATUS Status = CRYPTO_SUCCESS;
+
+    // Curve isogeny system initialization
+    CurveIsogeny = SIDH_curve_allocate(CurveIsogenyData);
+    if (CurveIsogeny == NULL) {
+        OK = false;
+        goto cleanup;
+    }
+    Status = SIDH_curve_initialize(CurveIsogeny, &random_bytes_test, CurveIsogenyData);
+    if (Status != CRYPTO_SUCCESS) {
+        OK = false;
+        goto cleanup;
+    }
+    printf("\n--------------------------------------------------------------------------------------------------------\n\n");
+    printf("Benchmarking elliptic curve scalar multiplications: \n\n");
+
+    // ladder-point evaluation
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fp2random751_test(P->X);fp2random751_test(Q->X);
+        fp2random751_test(P->Z);fp2random751_test(Q->Z);
+        random_mod_order((digit_t*)k, ALICE, CurveIsogeny);
+        cycles1 = cpucycles();
+        original_secret_pt(P_base,k,ALICE,Q,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  Alice P+[k]Q basefield runs in .................................. %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    // ladder-point evaluation
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fp2random751_test(P->X);fp2random751_test(Q->X);
+        fp2random751_test(P->Z);fp2random751_test(Q->Z);
+        random_mod_order((digit_t*)k, BOB, CurveIsogeny);
+        cycles1 = cpucycles();
+		original_secret_pt(P_base,k,BOB,Q,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  Bob P+[k]Q basefield runs in .................................... %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    // new right-to-left ladder-point evaluation
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fp2random751_test(P->X);fp2random751_test(Q->X);
+        fp2random751_test(P->Z);fp2random751_test(Q->Z);
+        random_mod_order((digit_t*)k, ALICE, CurveIsogeny);
+        cycles1 = cpucycles();
+		right2left_secret_pt(P_base,k,ALICE,Q,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  Alice P+[k]Q basefield (precomputation) runs in ................. %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    // new right-to-left ladder-point evaluation
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fp2random751_test(P->X);fp2random751_test(Q->X);
+        fp2random751_test(P->Z);fp2random751_test(Q->Z);
+        random_mod_order((digit_t*)k, BOB, CurveIsogeny);
+        cycles1 = cpucycles();
+		right2left_secret_pt(P_base,k,BOB,Q,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  Bob P+[k]Q basefield (precomputation) runs in ................... %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    //Fp2 Method 1- Montg+y-recov+ADD
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fp2random751_test(aP.x); fp2random751_test(aQ.x);
+        fp2random751_test(aP.y); fp2random751_test(aQ.y);
+        random_mod_order((digit_t*)k, BOB, CurveIsogeny);
+        cycles1 = cpucycles();
+        mont_twodim_scalarmult(k,&aP,&aQ,A,A24,&R,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  P+kQ (Fp2) Method 1 runs in ..................................... %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    //Fp2 Precmp 1- Montg+y-recov+ADD
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fprandom751_test(P_base->x);fprandom751_test(P_base->y);
+        random_mod_order((digit_t*)k, ALICE, CurveIsogeny);
+        cycles1 = cpucycles();
+        precmp_secret_pt_Fp2(P_base,k,ALICE,Q,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  P+kQ (Fp2) (precomputation) runs in ............................. %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+
+    // ladder-3-point evaluation
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fp2random751_test(xP);
+        fp2random751_test(xQ);
+        fp2random751_test(xPQ);
+        random_mod_order((digit_t*)k, ALICE, CurveIsogeny);
+        cycles1 = cpucycles();
+        original_ladder_3_pt(xP,xQ,xPQ,k,ALICE,P,A,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  3-point ladder (original) evaluation runs in .................... %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    // New right-to-left 3-point evaluation
+    cycles = 0;
+    for (n=0; n<TINY_BENCH_LOOPS; n++)
+    {
+        fp2random751_test(xP);
+        fp2random751_test(xQ);
+        fp2random751_test(xPQ);
+        random_mod_order((digit_t*)k, ALICE, CurveIsogeny);
+        cycles1 = cpucycles();
+		r2l_ladder_3_pt(xP,xQ,xPQ,k,ALICE,P,A,CurveIsogeny);
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    printf("  Right-to-left 3-point ladder (New) evaluation runs in ........... %8lld ", cycles/TINY_BENCH_LOOPS); print_unit;
+    printf("\n");
+
+    cleanup:
+    SIDH_curve_free(CurveIsogeny);
+
     return OK;
 }
 
@@ -1983,6 +2237,7 @@ int main()
     OK = OK && fp2_run();        // Benchmark arithmetic functions over GF(p751^2)
     
     OK = OK && ecisog_run(&CurveIsogeny_SIDHp751);       // Benchmark elliptic curve and isogeny functions
+    OK = OK && ec_mult_run(&CurveIsogeny_SIDHp751);       // Benchmark elliptic curve scalar multiplications
 
     OK = OK && ecpoints_test(&CurveIsogeny_SIDHp751);    // Test point generation functions
     OK = OK && ecpairing_test(&CurveIsogeny_SIDHp751);   // Test pairing functions

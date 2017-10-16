@@ -7,10 +7,30 @@
 *
 * Abstract: modular arithmetic optimized for x64 platforms
 *
+*********************************************************************************************
+* Update: New field arithmetic for Fp and Fp2
+*
+* This is derived work authored by:
+*    Faz-Hernández, Lopez, Ochoa-Jiménez and Rodríquez-Henríquez.
+*
+* Contributions:
+*  - Wrappers for field arithmetic in Fp and Fp2
+*  - Arithmeti using MULX and ADCX/ADOX instructions.
+*  - A 25% percent of improvement over SIDH v2 on Haswell and Skylake.
+*
+* Copyright (c) Sept,2017 by Ochoa-Jiménez
+* Computer Science Department
+* CINVESTAV-IPN. Mexico.
 *********************************************************************************************/
 
 #include "../SIDH_internal.h"
 
+// Selecting the integer multiplication version
+#if defined __HASWELL__
+#include "./ZMULT_HW.h"
+#elif defined __SKYLAKE__
+#include "./ZMULT_SK.h"
+#endif
 
 // Global constants
 extern const uint64_t p751[NWORDS_FIELD];
@@ -532,10 +552,437 @@ void mp_mul(const digit_t* a, const digit_t* b, digit_t* c, const unsigned int n
 
 #elif (OS_TARGET == OS_LINUX)
     
+    
+    #if defined __NATIVE__
     mul751_asm(a, b, c);
+    #else
+    MULT(c, a, b);
+    #endif
 
 #endif
 }
+
+void mp_sqr(const digit_t* a, const digit_t* b, digit_t* c, const unsigned int nwords)
+{ // Multiprecision multiply, c = a*b, where lng(a) = lng(b) = nwords.
+        
+    UNREFERENCED_PARAMETER(nwords);
+
+#if (OS_TARGET == OS_WIN)
+    digit_t t = 0;
+    uint128_t uv = {0};
+    unsigned int carry = 0;
+        
+    MULADD128(a[0], b[0], uv, carry, uv);
+    t += carry;
+    c[0] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[0], uv, carry, uv);
+    t += carry;
+    c[1] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[0], uv, carry, uv);
+    t += carry;
+    c[2] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[0], uv, carry, uv);
+    t += carry;
+    c[3] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[0], uv, carry, uv);
+    t += carry;
+    c[4] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[0], uv, carry, uv);
+    t += carry;
+    c[5] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[0], uv, carry, uv);
+    t += carry;
+    c[6] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[0], uv, carry, uv);
+    t += carry;
+    c[7] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[0], uv, carry, uv);
+    t += carry;
+    c[8] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[0], uv, carry, uv);
+    t += carry;
+    c[9] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[0], uv, carry, uv);
+    t += carry;
+    c[10] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[0], b[11], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[1], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[1], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[11], b[0], uv, carry, uv);
+    t += carry;
+    c[11] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;    
+    
+    MULADD128(a[1], b[11], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[11], b[1], uv, carry, uv);
+    t += carry;
+    c[12] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[2], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[2], b[11], uv, carry, uv);
+    t += carry;
+    c[13] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[3], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[3], b[11], uv, carry, uv);
+    t += carry;
+    c[14] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[4], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[4], b[11], uv, carry, uv);
+    t += carry;
+    c[15] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[5], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[5], b[11], uv, carry, uv);
+    t += carry;
+    c[16] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[6], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[6], b[11], uv, carry, uv);
+    t += carry;
+    c[17] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[7], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[7], b[11], uv, carry, uv);
+    t += carry;
+    c[18] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[8], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[8], b[11], uv, carry, uv);
+    t += carry;
+    c[19] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[9], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[9], b[11], uv, carry, uv);
+    t += carry;
+    c[20] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    t = 0;
+    
+    MULADD128(a[11], b[10], uv, carry, uv);
+    t += carry;
+    MULADD128(a[10], b[11], uv, carry, uv);
+    t += carry;
+    c[21] = uv[0];
+    uv[0] = uv[1];
+    uv[1] = t;
+    
+    MULADD128(a[11], b[11], uv, carry, uv);
+    c[22] = uv[0];
+    c[23] = uv[1];
+
+#elif (OS_TARGET == OS_LINUX)
+    
+    
+    #if defined __NATIVE__
+    mul751_asm(a, b, c);
+    #else
+    SQR(c, a);
+    #endif
+
+#endif
+}
+
 
 
 void rdc_mont(const dfelm_t ma, felm_t mc)
@@ -860,7 +1307,10 @@ void rdc_mont(const dfelm_t ma, felm_t mc)
     
 #elif (OS_TARGET == OS_LINUX)                 
     
+    #if defined __NATIVE__
     rdc751_asm(ma, mc);    
-
+    #else
+    REDC(mc, (digit_t *) ma);
+    #endif
 #endif
 }

@@ -7,10 +7,30 @@
 *
 * Abstract: elliptic curve and isogeny functions
 *
+*********************************************************************************************
+* Update: New functions for improving the operation P+[k]Q
+*
+* This is derived work authored by:
+*    Faz-Hernández, Lopez, Ochoa-Jiménez and Rodríquez-Henríquez.
+*
+* Contributions:
+*  - Right2Left Ladder replacing 3-point ladder of De Feo et al.
+*  - Precomputation algorithm using a Right2Left Ladder.
+*  - New point tripling formulas. Improves by 1M-1S-1A in Fp2
+*
+* Copyright (c) Sept,2017 by Armando Faz <armfazh@ic.unicamp.br>.
+* Institute of Computing.
+* University of Campinas, Brazil.
 *********************************************************************************************/ 
 
 #include "SIDH_internal.h"
+#include "SIDH.h"
 #include <math.h>
+#include <stdio.h>
+
+#ifndef __NO_R2L__
+#include "look_up_tables.h"
+#endif
 
 extern const uint64_t LIST[22][NWORDS64_FIELD];
 
@@ -39,6 +59,37 @@ void j_inv(const f2elm_t A, const f2elm_t C, f2elm_t jinv)
     fp2mul751_mont(jinv, t0, jinv);                    // jinv = t0*jinv
 }
 
+void xDBLADD_full(point_proj_t P, point_proj_t Q, const point_proj_t PQ, const f2elm_t A24)
+{
+	// Simultaneous doubling and differential addition.
+	// Input:
+	// 	projective Montgomery points P=(XP:ZP) and Q=(XQ:ZQ) such that xP=XP/ZP and xQ=XQ/ZQ,
+	// 	projective difference xPQ=x(P-Q)/z(P-Q)
+	// 	and Montgomery curve constant A24=(A+2)/4.
+	// Output:
+	// 	projective Montgomery points P <- 2*P = (X2P:Z2P) such that x(2P)=X2P/Z2P, and Q <- P+Q = (XQP:ZQP) such that = x(Q+P)=XQP/ZQP.
+    f2elm_t t0, t1, t2;
+
+    fp2add751(P->X, P->Z, t0);                         // t0 = XP+ZP
+    fp2sub751(P->X, P->Z, t1);                         // t1 = XP-ZP
+    fp2sqr751_mont(t0, P->X);                          // XP = (XP+ZP)^2
+    fp2sub751(Q->X, Q->Z, t2);                         // t2 = XQ-ZQ
+    fp2add751(Q->X, Q->Z, Q->X);                       // XQ = XQ+ZQ
+    fp2mul751_mont(t0, t2, t0);                        // t0 = (XP+ZP)*(XQ-ZQ)
+    fp2sqr751_mont(t1, P->Z);                          // ZP = (XP-ZP)^2
+    fp2mul751_mont(t1, Q->X, t1);                      // t1 = (XP-ZP)*(XQ+ZQ)
+    fp2sub751(P->X, P->Z, t2);                         // t2 = (XP+ZP)^2-(XP-ZP)^2
+    fp2mul751_mont(P->X, P->Z, P->X);                  // XP = (XP+ZP)^2*(XP-ZP)^2
+    fp2mul751_mont(t2, A24, Q->X);                     // XQ = A24*[(XP+ZP)^2-(XP-ZP)^2]
+    fp2sub751(t0, t1, Q->Z);                           // ZQ = (XP+ZP)*(XQ-ZQ)-(XP-ZP)*(XQ+ZQ)
+    fp2add751(Q->X, P->Z, P->Z);                       // ZP = A24*[(XP+ZP)^2-(XP-ZP)^2]+(XP-ZP)^2
+    fp2add751(t0, t1, Q->X);                           // XQ = (XP+ZP)*(XQ-ZQ)+(XP-ZP)*(XQ+ZQ)
+    fp2mul751_mont(P->Z, t2, P->Z);                    // ZP = [A24*[(XP+ZP)^2-(XP-ZP)^2]+(XP-ZP)^2]*[(XP+ZP)^2-(XP-ZP)^2]
+    fp2sqr751_mont(Q->Z, Q->Z);                        // ZQ = [(XP+ZP)*(XQ-ZQ)-(XP-ZP)*(XQ+ZQ)]^2
+    fp2sqr751_mont(Q->X, Q->X);                        // XQ = [(XP+ZP)*(XQ-ZQ)+(XP-ZP)*(XQ+ZQ)]^2
+	fp2mul751_mont(Q->X, PQ->Z, Q->X);                 // XQ = zPQ*[(XP+ZP)*(XQ-ZQ)+(XP-ZP)*(XQ+ZQ)]^2
+	fp2mul751_mont(Q->Z, PQ->X, Q->Z);                 // ZQ = xPQ*[(XP+ZP)*(XQ-ZQ)-(XP-ZP)*(XQ+ZQ)]^2
+}
 
 void xDBLADD(point_proj_t P, point_proj_t Q, const f2elm_t xPQ, const f2elm_t A24)
 { // Simultaneous doubling and differential addition.
@@ -121,6 +172,26 @@ void xADD(point_proj_t P, const point_proj_t Q, const f2elm_t xPQ)
     fp2sqr751_mont(P->Z, P->Z);                        // ZP = [(XP+ZP)*(XQ-ZQ)-(XP-ZP)*(XQ+ZQ)]^2
     fp2sqr751_mont(P->X, P->X);                        // XP = [(XP+ZP)*(XQ-ZQ)+(XP-ZP)*(XQ+ZQ)]^2
     fp2mul751_mont(P->Z, xPQ, P->Z);                   // ZP = xPQ*[(XP+ZP)*(XQ-ZQ)-(XP-ZP)*(XQ+ZQ)]^2
+}
+
+
+void DADD_basefield(point_basefield_proj_t P, const point_basefield_proj_t Q_P, const felm_t X)
+{   // Differential addition.
+    // P <=  P+(x,1) dif=Q_P
+    // Input: projective Montgomery points P=(XP:ZP) and Q-P=(XQP:ZQP) such that xP=XP/ZP and xQ=X/1,
+    // Output: projective Montgomery point P <= P+Q
+    // X = (x+1)/(x-1) pre-computed
+    felm_t t0, t1, t2;
+
+    fpadd751(P->X, P->Z, t0);                         // t0 = XP+ZP
+    fpsub751(P->X, P->Z, t1);                         // t1 = XP-ZP
+    fpmul751_mont(t1,X,t2);                           // t2 = (XP-ZP)*u
+    fpadd751(t0, t2, P->X);                           // XP = (XP+ZP)+u*(XP-ZP)
+    fpsub751(t0, t2, P->Z);                           // ZP = (XP+ZP)-u*(XP-ZP)
+    fpsqr751_mont(P->X, P->X);                        // XP = [(XP+ZP)+u*(XP-ZP)]^2
+    fpsqr751_mont(P->Z, P->Z);                        // ZP = [(XP+ZP)-u*(XP-ZP)]^2
+    fpmul751_mont(P->X, Q_P->Z, P->X);                // XP = zPQ*[(XP+ZP)+u*(XP-ZP)]^2
+    fpmul751_mont(P->Z, Q_P->X, P->Z);                // ZP = xPQ*[(XP+ZP)-u*(XP-ZP)]^2
 }
 
 
@@ -241,12 +312,320 @@ CRYPTO_STATUS BigMont_ladder(unsigned char* x, digit_t* m, unsigned char* xout, 
 }
 
 
-CRYPTO_STATUS secret_pt(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny)
+CRYPTO_STATUS precmp_secret_pt_Fp2(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny)
 { // Computes key generation entirely in the base field by exploiting a 1-dimensional Montgomery ladder in the trace zero subgroup and 
   // recovering the y-coordinate for the addition. All operations in the base field GF(p).
   // Input:  The scalar m, point P = (x,y) on E in the base field subgroup and Q = (x1,y1*i) on E in the trace-zero subgroup. 
   //         x,y,x1,y1 are all in the base field.          
   // Output: R = (RX0+RX1*i)/RZ0 (the x-coordinate of P+[m]Q).
+	felm_t S,Q_S;
+	f2elm_t _2iQ_mu;
+	point_affine *_2iQ;
+	f2elm_t dif;
+	point_proj R1,R2,R3;
+	point_full_proj kQ,full_P,full_R;
+	digit_t scalar[NWORDS_ORDER];
+	digit_t mask,prev;
+	const uint64_t * Tab;
+	unsigned int bit = 0, nbits;
+	unsigned int i;
+
+	const digit_t _3inv_oA[NWORDS_ORDER] = { /* 1/3 mod oA */
+			0xAAAAAAAAAAAAAAAB,0xAAAAAAAAAAAAAAAA,0xAAAAAAAAAAAAAAAA,
+			0xAAAAAAAAAAAAAAAA,0xAAAAAAAAAAAAAAAA,0x000AAAAAAAAAAAAA
+	};
+	const digit_t _4inv_oB[NWORDS_ORDER] = { /* (1/4 mod oB)*2^384 mod (3^239) */
+			0xEB5506643C20F9BD,0xD8C154C49CFD1FCA,0xCA45971B4D3D250B,
+			0x7A2D8BDBAEE77B53,0x8EA63AA6E40654F8,0x10EB80AE5003815
+	};
+	const felm_t SA_X = { /* (x,y) = SA;  SA_X = to_mont(x) */
+			0xFFFFFFFFFFFDB652,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0x6B9FFFFFFFFFFFFF,
+			0x8EC4E4A1129C0C42,0x711E035AD4A8A7A6,0x3FB0E0B52A8F9A48,0x38BE00CA8AAAEDF1,0xFD1AFE3322A8147D,0x428AB0851139
+	};
+	const felm_t SB_X = { /* (x,y) = SB;  SB_X = to_mont(x) */
+			0x84485B5F84F87723,0x23C95C099F84DE4F,0xB8AF1E7118B30D0F,0xB9B1CE62F48547F9,0x3DA55BB3FB08A700,0xB5817ADE5B91F597,
+			0xE79E1FCF0AF940C9,0xBB60344181114E9D,0x0F7BAD5863C28A11,0x3FE7A11898419A7C,0x1070C40098C51E33,0x122697AF2B19
+	};
+	const felm_t QA_SB_X = { /* (x,y) = QA-SB;  QA-SB_X = to_mont(x) */
+			0xBDB500AF28BF19C6,0xA9DBA0DC9C500777,0x555587C5242091F8,0xB2F79AE2BAD40CDF,0x9A53DFEFCCA87778,0xCB63F90D3B29E592,
+			0xFDA7FE26D6BE7CE8,0xB4C80AA87FF27B01,0xBA2873AF800A8E11,0x734ACDAA1430C012,0x6F4563B6927C6BA,0x4FCACEFE6BA2
+	};
+	const felm_t QB_SA_X = { /* (x,y) = QB-SA;  QB-SA_X = to_mont(x) */
+			0xBD0C0516F26F441B,0x400260A336ADFA44,0x5C8493B76AD372C7,0xC5C0C661C9D57C0D,0xD4545A50CEC58A98,0xCDE3DFC6D1739EF5,
+			0x3B00EF1493497D3F,0x3B9823CA7356AEF4,0x4E8B29ED0EE9DE2D,0xA0355CA6B1B38187,0x690010CA832C9F01,0x1F72CAA86A34
+	};
+	/* Alice
+	 * xx,yy:= ((3*2^370)*QA)[1];
+	 * to_mont(xx);
+	 * to_mont(yy);
+	 */
+	const point_affine _2iQ_Alice = {
+			.x = {
+					{
+							0xFFFFFFFFFFFDB652,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0x6B9FFFFFFFFFFFFF,
+							0x8EC4E4A1129C0C42,0x711E035AD4A8A7A6,0x3FB0E0B52A8F9A48,0x38BE00CA8AAAEDF1,0xFD1AFE3322A8147D,0x428AB0851139
+					},
+					{0}
+			},
+			.y = {
+					{0},
+					{
+					 0x957EBAD489F67C6F,0x948C7DD037C464D5,0x525626E3E5A93782,0x168CF49C8D303980,0x3D3CF159A048DAA,0x478404EE5A178BC9,
+							0x4E61C8483CD8F624,0x49DF712544173CDE,0x566370793BAF611D,0x7E290975577CF148,0x97E421BC9BE88A62,0x5370762DBFA4
+					}
+			}
+	};
+	/* Bob
+	 * xx,yy:= ((2^381)*QB)[1];
+	 * to_mont(xx);
+	 * to_mont(yy);
+	 */
+	const point_affine _2iQ_Bob = {
+			.x = {
+					{
+							0xE7D83DC64F12E2B9,0x6EE99F795F1A9233,0x414D2A3584E41776,0x40045C1254A2FAF5,0x762325D4B9940E0B,0x85A9D3293308D273,
+							0x8BBDDE6675B0738,0x2AFB36F660844EFC,0xF126084E14464CB2,0xBEA6574730D48163,0xA01A811F3E8320,0x214AB2679FC4
+					},
+					{0}
+			},
+			.y = {
+					{0},
+					{
+					 0x649C4220DC572954,0x7AF81067892DEAD6,0x9A4A55D7D9B9FC47,0x1088D8BA9EEBB1D8,0x7CEFD297E1571129,0xA062161EA25B0712,
+							0x163F00B337478492,0x7E7ECB08F7AAFB3A,0xB45BD73348434A07,0xC22E8036A1EE60C2,0xE433D634E26AB3B9,0x3E1E09D93302
+					}
+			}
+	};
+	/* Alice
+	 * xx:= (3*(2^370)*QA)[1];
+	 * mu:=(xx+1)/(xx-1)
+	 * to_mont(mu);
+	 */
+	const felm_t _2iQ_mu_Alice = {0};
+	/* Bob
+	 * xx:= ((2^381)*QB)[1];
+	 * mu:=(xx+1)/(xx-1)
+	 * to_mont(mu);
+	 */
+	const felm_t _2iQ_mu_Bob = {
+			0x7A2EF704BA86438A,0x65745351CB267E9A,0x365EBFE7AB67F2A6,0x716A6B3EB9686110,0xCD12A4C8FC52419,0x741300535188FA50,
+			0x47AFE3AE69F2FEED,0x51D646896C5D4D44,0x15A655580B962731,0x3D76FEE0903A845A,0x9BC37064137AF0EC,0x1001531B0EED
+	};
+
+	if (AliceOrBob == ALICE)
+	{
+		digit_t tmp[2*NWORDS_ORDER];
+
+		nbits = CurveIsogeny->oAbits-2;
+		fpcopy751(SB_X,S);
+		fpcopy751(QA_SB_X,Q_S);
+		fpcopy751(_2iQ_mu_Alice,_2iQ_mu[0]); fpzero751(_2iQ_mu[1]);
+		_2iQ = (point_affine*)&_2iQ_Alice;
+		Tab = TabAlice;
+
+		/* scalar <= k/3 mod rA */
+		multiply((digit_t*)m, _3inv_oA, tmp, NWORDS_ORDER);
+		copy_words(tmp, scalar, NWORDS_ORDER);
+		scalar[NWORDS_ORDER-1] &= (digit_t)(-1) >> 12;       // Hardcoded value
+	}
+	else if (AliceOrBob == BOB)
+	{
+		nbits = CurveIsogeny->oBbits;
+		fpcopy751(SA_X,S);
+		fpcopy751(QB_SA_X,Q_S);
+		fpcopy751(_2iQ_mu_Bob,_2iQ_mu[0]); fpzero751(_2iQ_mu[1]);
+		_2iQ = (point_affine*)&_2iQ_Bob;
+		Tab = TabBob;
+
+		/* scalar <= k/4 mod rB */
+		uint64_t Montgomery_Rprime[NWORDS64_ORDER] = {0x1A55482318541298, 0x070A6370DFA12A03, 0xCB1658E0E3823A40, 0xB3B7384EB5DEF3F9, 0xCBCA952F7006EA33, 0x00569EF8EC94864C}; // Value (2^384)^2 mod 3^239
+		uint64_t Montgomery_rprime[NWORDS64_ORDER] = {0x48062A91D3AB563D, 0x6CE572751303C2F5, 0x5D1319F3F160EC9D, 0xE35554E8C2D5623A, 0xCA29300232BC79A5, 0x8AAD843D646D78C5}; // Value -(3^239)^-1 mod 2^384
+
+		to_Montgomery_mod_order((digit_t*)m, (digit_t*)scalar, CurveIsogeny->Border, (digit_t*)&Montgomery_rprime, (digit_t*)&Montgomery_Rprime);
+		Montgomery_multiply_mod_order(scalar, _4inv_oB, scalar, CurveIsogeny->Border, (digit_t*)&Montgomery_rprime);
+		from_Montgomery_mod_order(scalar, scalar, CurveIsogeny->Border, (digit_t*)&Montgomery_rprime);                           // Converting back from Montgomery representation
+	}
+	else
+	{
+		return CRYPTO_ERROR_INVALID_PARAMETER;
+	}
+
+	// Initializing with the points
+	// R1 <= S/1; R2 <= (Q-S)/1
+	fpcopy751(  S, R1.X[0]); fpzero751(R1.X[1]);	fpcopy751(CurveIsogeny->Montgomery_one, R1.Z[0]); fpzero751(R1.Z[1]);
+	fpcopy751(Q_S, R2.X[0]); fpzero751(R2.X[1]);	fpcopy751(CurveIsogeny->Montgomery_one, R2.Z[0]); fpzero751(R2.Z[1]);
+
+	prev = 0;
+	for (i = 0; i < nbits; i++) {
+		bit = (unsigned int)(scalar[0]&0x1);
+		mp_shiftr1(scalar, NWORDS_ORDER);
+		mask = 0 - (digit_t)(bit^prev);
+		swap_points(&R1, &R2, mask);
+		prev = bit;
+		fpcopy751(&Tab[NWORDS64_FIELD*i],dif[0]); fpzero751(dif[1]);
+		xADD(&R2, &R1, dif);
+	}
+	mask = 0 - (digit_t)(prev);
+	swap_points(&R1, &R2, mask);
+
+	f2elm_t A,C;
+	/* Clearing low-order point S */
+	if (AliceOrBob == ALICE) {
+		/* Since A=0 C=1 then  A24=1, C24=2*/
+
+		fpcopy751(CurveIsogeny->Montgomery_one, C[0]);
+		fp2add751(C,C,A);
+		fp2add751(A,A,C);
+		xTPL(&R1,&R1,A,C);
+		xTPL(&R2,&R2,A,C);
+	} else if (AliceOrBob == BOB) {
+		xDBL(&R1,&R1,A,C);xDBL(&R1,&R1,A,C);
+		xDBL(&R2,&R2,A,C);xDBL(&R2,&R2,A,C);
+	} else {
+		return CRYPTO_ERROR_INVALID_PARAMETER;
+	}
+
+	/* Recovering y-coordinate of [k]Q */
+	fpcopy751(R1.X[0],R3.X[0]);    fpcopy751(R1.Z[0],R3.Z[0]);
+	xADD(&R3, &R2, _2iQ_mu);
+
+//    fpcopy751(R1.X,pj_R1.X[0]); fpzero751(pj_R1.X[1]);
+//    fpcopy751(R1.Z,pj_R1.Z[0]); fpzero751(pj_R1.Z[1]);
+//
+//    fpcopy751(R2.X,pj_R2.X[0]); fpzero751(pj_R2.X[1]);
+//    fpcopy751(R2.Z,pj_R2.Z[0]); fpzero751(pj_R2.Z[1]);
+//
+//    fpcopy751(R3.X,pj_R3.X[0]); fpzero751(pj_R3.X[1]);
+//    fpcopy751(R3.Z,pj_R3.Z[0]); fpzero751(pj_R3.Z[1]);
+
+	y_recovering(_2iQ,&R1,&R3,&R2,&kQ);
+
+	f2elm_t A0;
+	fp2zero751(A0);
+	if (AliceOrBob == ALICE) {
+		point_affine _2PA_2QAi = {  /* _2PA_2QAi = 2*PA+3*2^(eAbits-2)*QA; */
+				.x = {
+						{
+								0x9C2A3654B5CAA8FC,0x71DA703BC6A72437,0x7C2E74D8DDF07EB9,0x14217ED4E09CB339,0x8979DB08CD0BF8,0xF7EFF46D132F195,
+								0x34CCAA9BDA7F3D69,0x298AD9EAEA699D0C,0xAC00D3102D2A4EB3,0xFC8BC59EA987B1DB,0xA51628CA48A04F89,0x47F4AD49111
+						},
+						{
+								0xEBE72AA7350D53F3,0x2AD5E4A6D724E6DB,0xCCE815F093693BE3,0x39D90FD543297A89,0xC872A970ED7B8EB8,0x775A3DEC00752075,
+								0x27781E17B1BBAA5D,0x510799DF5F2459F9,0x7DE81DCC8F9B3707,0x9281E4D1F57F8702,0x558B8BD7875B80C2,0x2D8E2039BB0F
+						}
+				},
+				.y = {
+						{
+								0x25721FD413D36128,0xB75301F94F201B0F,0xC6EF91C078E0D072,0x68A5D29518238704,0xF5D834D34B74D319,0x678077DFBCE10E1A,
+								0xBEB070CAF807BF23,0x75C6E430503A161F,0x9B4ADD18950606D,0x91E33834B80D997A,0xB44B7306707EEEC0,0xFB19CC973A9
+						},
+						{
+								0x13D0AF76B43A118F,0xC672DFCFB94383BB,0xF2A3AA58CF0F901D,0x59AF31AA0ED00AF7,0x7EAA87DC3D3D6A6B,0x6D0CEDD2D710E948,
+								0xCF54D57071F61B7,0x4C75E7D3E23045BA,0x7B980701F77A722B,0xC9DE6336249F9EAF,0x1FD1804308731AC3,0xADE1FCC7D75
+						}
+				}
+		};
+		point_affine _2PA = { /* _2PA = 2PA */
+				.x = {
+						{
+								0x6B58A68059FEE240,0x6A0CDDE101D53945,0x9BB390C970A96718,0x85F5DA2AE04CF8F3,0x29309A3504F4A87B,0x1469F3B3BC429496,
+								0x2F4F81DF3819923B,0xFE8B21AEE84BDC2C,0x829370C4AC4B87D5,0x3321889EE50D93EF,0x98E0C58286164C12,0x3F6D9F200574
+						},
+						{
+								0
+						}
+				},
+				.y = {
+						{
+								0x9FC84D7F1EBBFA5E,0xA631CAFE224EBA60,0x728CFCBC6895235,0x4380806397C0395A,0x938F3ACAB92026AD,0xAE4A897D357119B0,
+								0xC28737A9D7335F15,0xFD32897FA8CCF5AE,0xEB4C22E97E465C6B,0xAA293637BB4FFC0F,0xFCB838FCB1CFC885,0x1FD4B77C0283
+						},
+						{
+								0
+						}
+				}
+		};
+		point_affine _PA_2QAi = { /* _PA_2QAi = -PA+3*2^(eAbits-1)*QA  */
+				.x = {
+						{
+								0xBCF56AA1F988F05B,0xA1904A7DF12D502B,0x8863E83BF9FB4EE,0xDD7F60C3C87CF762,0x936A936EA8ED9BA7,0x30280B6D28F7A522,
+								0x6561E996C54FB269,0x896D12A3F7308B87,0x47433574585DE774,0xD1014375B4E01E89,0xD245D4550DE52C62,0x62B8D74B81BB
+						},
+						{
+								0
+						}
+				},
+				.y = {
+						{
+								0x98E2719E38FF6403,0x7205773D6A942623,0xC0EC772D3544BD8D,0x1C36DC8B14612DA1,0xA9BD0817778D6956,0x99EF9DD47C4BBA32,
+								0x84258BDBBB228935,0xC602FA25EEC263B5,0xCA7937EC11B30CE5,0x3DB83145BE87175E,0xCE5632B5CAB5EA2D,0x51986B424567
+						},
+						{
+								0
+						}
+				}
+		};
+		point_affine _PA = { /* _PA = -PA */
+				.x = {
+						{
+								0xD56FE52627914862,0x1FAD60DC96B5BAEA,0x1E137D0BF07AB91,0x404D3E9252161964,0x3C5385E4CD09A337,0x4476426769E4AF73,
+								0x9790C6DB989DFE33,0xE06E1C04D2AA8B5E,0x38C08185EDEA73B9,0xAA41F678A4396CA6,0x92B9259B2229E9A0,0x2F9326818BE0
+						},
+						{
+								0
+						}
+				},
+				.y = {
+						{
+								0x332BD16FBE3D7739,0x7E5E20FF2319E3DB,0xEA856234AEFBD81B,0xE016DF7D6D071283,0x8AE42796F73CD34F,0x6364B408A4774575,
+								0xA71C97F17CE99497,0xDA03CDD9AA0CBE71,0xE52B4FDA195BD56F,0xDAC41F811FCE0A46,0x9333720F0EE84A61,0x1399F006E578
+						},
+						{
+								0
+						}
+				}
+		};
+
+		f2elm_t one;
+		fpcopy751(CurveIsogeny->Montgomery_one,one[0]);fpzero751(one[1]);
+
+		bit = (unsigned int)(scalar[0]&0x1);
+		mp_shiftr1(scalar, NWORDS_ORDER);
+		mask = 0 - (digit_t)(bit);
+		swap_points_affine(&_2PA,&_2PA_2QAi,mask);
+		ADD(&kQ,_2PA.x,_2PA.y,one,A0,&full_R);
+
+		bit = (unsigned int)(scalar[0]&0x1);
+		mp_shiftr1(scalar, NWORDS_ORDER);
+		mask = 0 - (digit_t)(bit);
+		swap_points_affine(&_PA,&_PA_2QAi,mask);
+		ADD(&full_R,_PA.x,_PA.y,one,A0,&full_R);
+
+		fp2copy751(full_R.X,R->X);
+		fp2copy751(full_R.Z,R->Z);
+	}
+	else if (AliceOrBob == BOB) {
+		fpcopy751(P->x,full_P.X[0]); fpzero751(full_P.X[1]);
+		fpcopy751(P->y,full_P.Y[0]); fpzero751(full_P.Y[1]);
+		fpcopy751(CurveIsogeny->Montgomery_one,full_P.Z[0]); fpzero751(full_P.Z[1]);
+		ADD(&kQ,full_P.X,full_P.Y,full_P.Z,A0,&full_R);
+		fp2copy751(full_R.X,R->X);
+		fp2copy751(full_R.Z,R->Z);
+	}
+	else {
+		return CRYPTO_ERROR_INVALID_PARAMETER;
+	}
+
+	return CRYPTO_SUCCESS;
+}
+
+
+CRYPTO_STATUS original_secret_pt(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny)
+{ // Computes key generation entirely in the base field by exploiting a 1-dimensional Montgomery ladder in the trace zero subgroup and
+    // recovering the y-coordinate for the addition. All operations in the base field GF(p).
+    // Input:  The scalar m, point P = (x,y) on E in the base field subgroup and Q = (x1,y1*i) on E in the trace-zero subgroup.
+    //         x,y,x1,y1 are all in the base field.
+    // Output: R = (RX0+RX1*i)/RZ0 (the x-coordinate of P+[m]Q).
     unsigned int nbits;
     point_basefield_t Q;
     point_basefield_proj_t S, T;
@@ -312,8 +691,383 @@ CRYPTO_STATUS secret_pt(const point_basefield_t P, const digit_t* m, const unsig
     return CRYPTO_SUCCESS;
 }
 
+CRYPTO_STATUS right2left_secret_pt(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny)
+{ // Computes key generation entirely in the base field by exploiting a 1-dimensional Montgomery ladder in the trace zero subgroup and
+  // recovering the y-coordinate for the addition. All operations in the base field GF(p).
+  // Input:  The scalar m, point P = (x,y) on E in the base field subgroup and Q = (x1,y1*i) on E in the trace-zero subgroup.
+  //         x,y,x1,y1 are all in the base field.
+  // Output: R = (RX0+RX1*i)/RZ0 (the x-coordinate of P+[m]Q).
+    felm_t S,Q_S,_2iQ_mu;
+    point_affine *_2iQ;
+    point_basefield_proj R1,R2,R3;
+    point_proj pj_R1,pj_R2,pj_R3;
+    point_full_proj kQ,full_P,full_R;
+    digit_t scalar[NWORDS_ORDER];
+    digit_t mask,prev;
+    const uint64_t * Tab;
+    unsigned int bit = 0, nbits;
+    unsigned int i;
 
-CRYPTO_STATUS ladder_3_pt(const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny)
+    const digit_t _3inv_oA[NWORDS_ORDER] = { /* 1/3 mod oA */
+            0xAAAAAAAAAAAAAAAB,0xAAAAAAAAAAAAAAAA,0xAAAAAAAAAAAAAAAA,
+            0xAAAAAAAAAAAAAAAA,0xAAAAAAAAAAAAAAAA,0x000AAAAAAAAAAAAA
+    };
+    const digit_t _4inv_oB[NWORDS_ORDER] = { /* (1/4 mod oB)*2^384 mod (3^239) */
+            0xEB5506643C20F9BD,0xD8C154C49CFD1FCA,0xCA45971B4D3D250B,
+            0x7A2D8BDBAEE77B53,0x8EA63AA6E40654F8,0x10EB80AE5003815
+    };
+    const felm_t SA_X = { /* (x,y) = SA;  SA_X = to_mont(x) */
+            0xFFFFFFFFFFFDB652,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0x6B9FFFFFFFFFFFFF,
+            0x8EC4E4A1129C0C42,0x711E035AD4A8A7A6,0x3FB0E0B52A8F9A48,0x38BE00CA8AAAEDF1,0xFD1AFE3322A8147D,0x428AB0851139
+    };
+    const felm_t SB_X = { /* (x,y) = SB;  SB_X = to_mont(x) */
+            0x84485B5F84F87723,0x23C95C099F84DE4F,0xB8AF1E7118B30D0F,0xB9B1CE62F48547F9,0x3DA55BB3FB08A700,0xB5817ADE5B91F597,
+            0xE79E1FCF0AF940C9,0xBB60344181114E9D,0x0F7BAD5863C28A11,0x3FE7A11898419A7C,0x1070C40098C51E33,0x122697AF2B19
+    };
+    const felm_t QA_SB_X = { /* (x,y) = QA-SB;  QA-SB_X = to_mont(x) */
+            0xBDB500AF28BF19C6,0xA9DBA0DC9C500777,0x555587C5242091F8,0xB2F79AE2BAD40CDF,0x9A53DFEFCCA87778,0xCB63F90D3B29E592,
+            0xFDA7FE26D6BE7CE8,0xB4C80AA87FF27B01,0xBA2873AF800A8E11,0x734ACDAA1430C012,0x6F4563B6927C6BA,0x4FCACEFE6BA2
+    };
+    const felm_t QB_SA_X = { /* (x,y) = QB-SA;  QB-SA_X = to_mont(x) */
+            0xBD0C0516F26F441B,0x400260A336ADFA44,0x5C8493B76AD372C7,0xC5C0C661C9D57C0D,0xD4545A50CEC58A98,0xCDE3DFC6D1739EF5,
+            0x3B00EF1493497D3F,0x3B9823CA7356AEF4,0x4E8B29ED0EE9DE2D,0xA0355CA6B1B38187,0x690010CA832C9F01,0x1F72CAA86A34
+    };
+    /* Alice
+     * xx,yy:= ((3*2^370)*QA)[1];
+     * to_mont(xx);
+     * to_mont(yy);
+     */
+    const point_affine _2iQ_Alice = {
+        .x = {
+            {
+                0xFFFFFFFFFFFDB652,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF,0x6B9FFFFFFFFFFFFF,
+                0x8EC4E4A1129C0C42,0x711E035AD4A8A7A6,0x3FB0E0B52A8F9A48,0x38BE00CA8AAAEDF1,0xFD1AFE3322A8147D,0x428AB0851139
+            },
+            {0}
+        },
+        .y = {
+            {0},
+            {
+                0x957EBAD489F67C6F,0x948C7DD037C464D5,0x525626E3E5A93782,0x168CF49C8D303980,0x3D3CF159A048DAA,0x478404EE5A178BC9,
+                0x4E61C8483CD8F624,0x49DF712544173CDE,0x566370793BAF611D,0x7E290975577CF148,0x97E421BC9BE88A62,0x5370762DBFA4
+            }
+        }
+    };
+    /* Bob
+     * xx,yy:= ((2^381)*QB)[1];
+     * to_mont(xx);
+     * to_mont(yy);
+     */
+    const point_affine _2iQ_Bob = {
+        .x = {
+            {
+                0xE7D83DC64F12E2B9,0x6EE99F795F1A9233,0x414D2A3584E41776,0x40045C1254A2FAF5,0x762325D4B9940E0B,0x85A9D3293308D273,
+                0x8BBDDE6675B0738,0x2AFB36F660844EFC,0xF126084E14464CB2,0xBEA6574730D48163,0xA01A811F3E8320,0x214AB2679FC4
+            },
+            {0}
+        },
+        .y = {
+            {0},
+            {
+                0x649C4220DC572954,0x7AF81067892DEAD6,0x9A4A55D7D9B9FC47,0x1088D8BA9EEBB1D8,0x7CEFD297E1571129,0xA062161EA25B0712,
+                0x163F00B337478492,0x7E7ECB08F7AAFB3A,0xB45BD73348434A07,0xC22E8036A1EE60C2,0xE433D634E26AB3B9,0x3E1E09D93302
+            }
+        }
+    };
+    /* Alice
+     * xx:= (3*(2^370)*QA)[1];
+     * mu:=(xx+1)/(xx-1)
+     * to_mont(mu);
+     */
+    const felm_t _2iQ_mu_Alice = {0};
+    /* Bob
+     * xx:= ((2^381)*QB)[1];
+     * mu:=(xx+1)/(xx-1)
+     * to_mont(mu);
+     */
+    const felm_t _2iQ_mu_Bob = {
+            0x7A2EF704BA86438A,0x65745351CB267E9A,0x365EBFE7AB67F2A6,0x716A6B3EB9686110,0xCD12A4C8FC52419,0x741300535188FA50,
+            0x47AFE3AE69F2FEED,0x51D646896C5D4D44,0x15A655580B962731,0x3D76FEE0903A845A,0x9BC37064137AF0EC,0x1001531B0EED
+    };
+
+    if (AliceOrBob == ALICE)
+    {
+        digit_t tmp[2*NWORDS_ORDER];
+
+        nbits = CurveIsogeny->oAbits-2;
+		fpcopy751(SB_X,S);
+        fpcopy751(QA_SB_X,Q_S);
+        fpcopy751(_2iQ_mu_Alice,_2iQ_mu);
+        _2iQ = (point_affine*)&_2iQ_Alice;
+        Tab = TabAlice;
+
+        /* scalar <= k/3 mod rA */
+        multiply((digit_t*)m, _3inv_oA, tmp, NWORDS_ORDER);
+        copy_words(tmp, scalar, NWORDS_ORDER);
+        scalar[NWORDS_ORDER-1] &= (digit_t)(-1) >> 12;       // Hardcoded value
+    }
+    else if (AliceOrBob == BOB)
+    {
+        nbits = CurveIsogeny->oBbits;
+        fpcopy751(SA_X,S);
+        fpcopy751(QB_SA_X,Q_S);
+        fpcopy751(_2iQ_mu_Bob,_2iQ_mu);
+        _2iQ = (point_affine*)&_2iQ_Bob;
+        Tab = TabBob;
+
+        /* scalar <= k/4 mod rB */
+        uint64_t Montgomery_Rprime[NWORDS64_ORDER] = {0x1A55482318541298, 0x070A6370DFA12A03, 0xCB1658E0E3823A40, 0xB3B7384EB5DEF3F9, 0xCBCA952F7006EA33, 0x00569EF8EC94864C}; // Value (2^384)^2 mod 3^239
+        uint64_t Montgomery_rprime[NWORDS64_ORDER] = {0x48062A91D3AB563D, 0x6CE572751303C2F5, 0x5D1319F3F160EC9D, 0xE35554E8C2D5623A, 0xCA29300232BC79A5, 0x8AAD843D646D78C5}; // Value -(3^239)^-1 mod 2^384
+
+        to_Montgomery_mod_order((digit_t*)m, (digit_t*)scalar, CurveIsogeny->Border, (digit_t*)&Montgomery_rprime, (digit_t*)&Montgomery_Rprime);
+        Montgomery_multiply_mod_order(scalar, _4inv_oB, scalar, CurveIsogeny->Border, (digit_t*)&Montgomery_rprime);
+        from_Montgomery_mod_order(scalar, scalar, CurveIsogeny->Border, (digit_t*)&Montgomery_rprime);                           // Converting back from Montgomery representation
+    }
+    else
+    {
+        return CRYPTO_ERROR_INVALID_PARAMETER;
+    }
+
+    // Initializing with the points
+    // R1 <= S/1; R2 <= (Q-S)/1
+    fpcopy751(  S, R1.X);	fpcopy751(CurveIsogeny->Montgomery_one, R1.Z);
+    fpcopy751(Q_S, R2.X);	fpcopy751(CurveIsogeny->Montgomery_one, R2.Z);
+
+	prev = 0;
+    for (i = 0; i < nbits; i++) {
+        bit = (unsigned int)(scalar[0]&0x1);
+        mp_shiftr1(scalar, NWORDS_ORDER);
+        mask = 0 - (digit_t)(bit^prev);
+        swap_points_basefield(&R1, &R2, mask);
+        prev = bit;
+        DADD_basefield(&R2, &R1, &Tab[NWORDS64_FIELD*i]);
+    }
+    mask = 0 - (digit_t)(prev);
+    swap_points_basefield(&R1, &R2, mask);
+
+    /* Clearing low-order point S */
+    if (AliceOrBob == ALICE) {
+        /**
+         * The new tripling formulas require
+         * A24=A-2C, C24=2C
+         * Therefore,
+         * since A=0 C=1 then
+         * A24=-2,, C24=2
+         **/
+        felm_t A,C;
+        fpcopy751(CurveIsogeny->Montgomery_one, C);
+		fpadd751(C,C,C);
+		fpcopy751(C,A);
+		fpneg751(A);
+        xTPL_basefield(&R1,&R1,A,C);
+        xTPL_basefield(&R2,&R2,A,C);
+    } else if (AliceOrBob == BOB) {
+        xDBL_basefield(&R1,&R1);xDBL_basefield(&R1,&R1);
+        xDBL_basefield(&R2,&R2);xDBL_basefield(&R2,&R2);
+    } else {
+        return CRYPTO_ERROR_INVALID_PARAMETER;
+    }
+
+	/* Recovering y-coordinate of [k]Q */
+    fpcopy751(R1.X,R3.X);    fpcopy751(R1.Z,R3.Z);
+	DADD_basefield(&R3, &R2, _2iQ_mu);
+
+    fpcopy751(R1.X,pj_R1.X[0]); fpzero751(pj_R1.X[1]);
+    fpcopy751(R1.Z,pj_R1.Z[0]); fpzero751(pj_R1.Z[1]);
+
+    fpcopy751(R2.X,pj_R2.X[0]); fpzero751(pj_R2.X[1]);
+    fpcopy751(R2.Z,pj_R2.Z[0]); fpzero751(pj_R2.Z[1]);
+
+    fpcopy751(R3.X,pj_R3.X[0]); fpzero751(pj_R3.X[1]);
+    fpcopy751(R3.Z,pj_R3.Z[0]); fpzero751(pj_R3.Z[1]);
+
+    y_recovering(_2iQ,&pj_R1,&pj_R3,&pj_R2,&kQ);
+
+    f2elm_t A0;
+    fp2zero751(A0);
+    if (AliceOrBob == ALICE) {
+        point_affine _2PA_2QAi = {  /* _2PA_2QAi = 2*PA+3*2^(eAbits-2)*QA; */
+            .x = {
+                    {
+                            0x9C2A3654B5CAA8FC,0x71DA703BC6A72437,0x7C2E74D8DDF07EB9,0x14217ED4E09CB339,0x8979DB08CD0BF8,0xF7EFF46D132F195,
+                            0x34CCAA9BDA7F3D69,0x298AD9EAEA699D0C,0xAC00D3102D2A4EB3,0xFC8BC59EA987B1DB,0xA51628CA48A04F89,0x47F4AD49111
+                    },
+                    {
+                            0xEBE72AA7350D53F3,0x2AD5E4A6D724E6DB,0xCCE815F093693BE3,0x39D90FD543297A89,0xC872A970ED7B8EB8,0x775A3DEC00752075,
+                            0x27781E17B1BBAA5D,0x510799DF5F2459F9,0x7DE81DCC8F9B3707,0x9281E4D1F57F8702,0x558B8BD7875B80C2,0x2D8E2039BB0F
+                    }
+            },
+            .y = {
+                    {
+                            0x25721FD413D36128,0xB75301F94F201B0F,0xC6EF91C078E0D072,0x68A5D29518238704,0xF5D834D34B74D319,0x678077DFBCE10E1A,
+                            0xBEB070CAF807BF23,0x75C6E430503A161F,0x9B4ADD18950606D,0x91E33834B80D997A,0xB44B7306707EEEC0,0xFB19CC973A9
+                    },
+                    {
+                            0x13D0AF76B43A118F,0xC672DFCFB94383BB,0xF2A3AA58CF0F901D,0x59AF31AA0ED00AF7,0x7EAA87DC3D3D6A6B,0x6D0CEDD2D710E948,
+                            0xCF54D57071F61B7,0x4C75E7D3E23045BA,0x7B980701F77A722B,0xC9DE6336249F9EAF,0x1FD1804308731AC3,0xADE1FCC7D75
+                    }
+            }
+        };
+        point_affine _2PA = { /* _2PA = 2PA */
+            .x = {
+                    {
+                            0x6B58A68059FEE240,0x6A0CDDE101D53945,0x9BB390C970A96718,0x85F5DA2AE04CF8F3,0x29309A3504F4A87B,0x1469F3B3BC429496,
+                            0x2F4F81DF3819923B,0xFE8B21AEE84BDC2C,0x829370C4AC4B87D5,0x3321889EE50D93EF,0x98E0C58286164C12,0x3F6D9F200574
+                    },
+                    {
+                            0
+                    }
+            },
+            .y = {
+                    {
+                            0x9FC84D7F1EBBFA5E,0xA631CAFE224EBA60,0x728CFCBC6895235,0x4380806397C0395A,0x938F3ACAB92026AD,0xAE4A897D357119B0,
+                            0xC28737A9D7335F15,0xFD32897FA8CCF5AE,0xEB4C22E97E465C6B,0xAA293637BB4FFC0F,0xFCB838FCB1CFC885,0x1FD4B77C0283
+                    },
+                    {
+                            0
+                    }
+            }
+        };
+        point_affine _PA_2QAi = { /* _PA_2QAi = -PA+3*2^(eAbits-1)*QA  */
+            .x = {
+                    {
+                            0xBCF56AA1F988F05B,0xA1904A7DF12D502B,0x8863E83BF9FB4EE,0xDD7F60C3C87CF762,0x936A936EA8ED9BA7,0x30280B6D28F7A522,
+                            0x6561E996C54FB269,0x896D12A3F7308B87,0x47433574585DE774,0xD1014375B4E01E89,0xD245D4550DE52C62,0x62B8D74B81BB
+                    },
+                    {
+                        0
+                    }
+            },
+            .y = {
+                    {
+                            0x98E2719E38FF6403,0x7205773D6A942623,0xC0EC772D3544BD8D,0x1C36DC8B14612DA1,0xA9BD0817778D6956,0x99EF9DD47C4BBA32,
+                            0x84258BDBBB228935,0xC602FA25EEC263B5,0xCA7937EC11B30CE5,0x3DB83145BE87175E,0xCE5632B5CAB5EA2D,0x51986B424567
+                    },
+                    {
+                        0
+                    }
+            }
+        };
+        point_affine _PA = { /* _PA = -PA */
+            .x = {
+                    {
+                        0xD56FE52627914862,0x1FAD60DC96B5BAEA,0x1E137D0BF07AB91,0x404D3E9252161964,0x3C5385E4CD09A337,0x4476426769E4AF73,
+                        0x9790C6DB989DFE33,0xE06E1C04D2AA8B5E,0x38C08185EDEA73B9,0xAA41F678A4396CA6,0x92B9259B2229E9A0,0x2F9326818BE0
+                    },
+                    {
+                        0
+                    }
+            },
+            .y = {
+                    {
+                        0x332BD16FBE3D7739,0x7E5E20FF2319E3DB,0xEA856234AEFBD81B,0xE016DF7D6D071283,0x8AE42796F73CD34F,0x6364B408A4774575,
+                        0xA71C97F17CE99497,0xDA03CDD9AA0CBE71,0xE52B4FDA195BD56F,0xDAC41F811FCE0A46,0x9333720F0EE84A61,0x1399F006E578
+                    },
+                    {
+                        0
+                    }
+            }
+        };
+
+        f2elm_t one;
+        fpcopy751(CurveIsogeny->Montgomery_one,one[0]);fpzero751(one[1]);
+
+        bit = (unsigned int)(scalar[0]&0x1);
+        mp_shiftr1(scalar, NWORDS_ORDER);
+        mask = 0 - (digit_t)(bit);
+        swap_points_affine(&_2PA,&_2PA_2QAi,mask);
+        ADD(&kQ,_2PA.x,_2PA.y,one,A0,&full_R);
+
+        bit = (unsigned int)(scalar[0]&0x1);
+        mp_shiftr1(scalar, NWORDS_ORDER);
+        mask = 0 - (digit_t)(bit);
+        swap_points_affine(&_PA,&_PA_2QAi,mask);
+        ADD(&full_R,_PA.x,_PA.y,one,A0,&full_R);
+
+        fp2copy751(full_R.X,R->X);
+        fp2copy751(full_R.Z,R->Z);
+    }
+    else if (AliceOrBob == BOB) {
+        fpcopy751(P->x,full_P.X[0]); fpzero751(full_P.X[1]);
+        fpcopy751(P->y,full_P.Y[0]); fpzero751(full_P.Y[1]);
+        fpcopy751(CurveIsogeny->Montgomery_one,full_P.Z[0]); fpzero751(full_P.Z[1]);
+        ADD(&kQ,full_P.X,full_P.Y,full_P.Z,A0,&full_R);
+        fp2copy751(full_R.X,R->X);
+        fp2copy751(full_R.Z,R->Z);
+    }
+    else {
+        return CRYPTO_ERROR_INVALID_PARAMETER;
+    }
+
+    return CRYPTO_SUCCESS;
+}
+
+inline CRYPTO_STATUS secret_pt(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny)
+{
+#if defined __NO_R2L__
+	/**
+	 * Original function of SIDHv2 library.
+	 * Point multiplication using a classical Montgomery ladder
+	 */
+	return original_secret_pt(P,m,AliceOrBob,R,CurveIsogeny);
+#else
+	/**
+	 * Update:
+	 * FLOR-SIDH-x64 - New right to left (R2L) algorithm.
+	 *
+	 * Point multiplication using a right to left ladder.
+	 * This version uses precomputed tables.
+	 * No table protection is required.
+	 */
+	return right2left_secret_pt(P,m,AliceOrBob,R,CurveIsogeny);
+#endif
+}
+
+void y_recovering(
+        point_t P,
+        point_proj_t Q,
+        point_proj_t Q_add_P,
+        point_proj_t Q_sub_P,
+        point_full_proj_t full_Q
+)
+{
+    /**
+     * Recover the Y coordinate of Q using the values:
+     *
+     * Input:
+     *    (X0,Y0) = P
+     *    (X1,Z1) = Q
+     *    (X2,Z2) = P+Q
+     *    (X3,Z3) = P-Q
+     * Output:
+     *    (X,Y,Z) = Q
+     *
+     * Okeya-Sakurai Theorem 3/Corollary 2 computes:
+	 * X = 4*Y0*Z1*Z2*Z3*X1;
+	 * Y = (X3*Z2-Z3*X2)*(X1-Z1*X0)^2;
+	 * Z = 4*Y0*Z1*Z2*Z3*Z1;
+     * Cost : 
+     *   9M + 1S + 4A
+     */
+    f2elm_t t;
+    fp2mul751_mont(P->y,Q->Z,full_Q->X);                     //  X = y*Z1
+    fp2mul751_mont(full_Q->X,Q_add_P->Z,full_Q->X);          //  X = y*Z1*Z2
+    fp2mul751_mont(full_Q->X,Q_sub_P->Z,full_Q->X);          //  X = y*Z1*Z2*Z3
+    fp2add751(full_Q->X,full_Q->X,full_Q->X);                //  X = 2*y*Z1*Z2*Z3
+    fp2add751(full_Q->X,full_Q->X,full_Q->X);                //  X = 4*y*Z1*Z2*Z3
+    fp2mul751_mont(full_Q->X,Q->Z,full_Q->Z);                //  Z = 4*y*Z1*Z2*Z3*Z1
+    fp2mul751_mont(full_Q->X,Q->X,full_Q->X);                //  X = 4*y*Z1*Z2*Z3*X1
+    
+    fp2mul751_mont(Q_sub_P->X,Q_add_P->Z,full_Q->Y);         //  Y = X3*Z2
+    fp2mul751_mont(Q_sub_P->Z,Q_add_P->X,t);                 //  t = Z3*X2
+    fp2sub751(full_Q->Y,t,full_Q->Y);                        //  Y = X3*Z2-Z3*X2
+    fp2mul751_mont(Q->Z,P->x,t);                             //  t = x*Z1
+    fp2sub751(Q->X,t,t);                                     //  t = X1-x*Z1
+    fp2sqr751_mont(t,t);                                     //  t = (X1-x*Z1)^2
+    fp2mul751_mont(t,full_Q->Y,full_Q->Y);                   //  Y = (X3*Z2-Z3*X2)*(X1-x*Z1)^2
+}
+
+CRYPTO_STATUS original_ladder_3_pt(const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny)
 { // Computes P+[m]Q via x-only arithmetic. Algorithm by De Feo, Jao and Plut.
   // Input:  three affine points xP,xQ,xPQ and Montgomery constant A.
   // Output: projective Montgomery x-coordinates of x(P+[m]Q)=WX/WZ
@@ -369,6 +1123,74 @@ CRYPTO_STATUS ladder_3_pt(const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ,
     return CRYPTO_SUCCESS;
 }
 
+CRYPTO_STATUS r2l_ladder_3_pt(const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny)
+{   // Computes P+[m]Q via x-only arithmetic. (New Algorithm)
+	// Input:  three affine points xP,xQ,xPQ and Montgomery constant A.
+	// Output: projective Montgomery x-coordinates of x(P+[m]Q)=WX/WZ
+	point_proj_t R2 = {0}, R0 = {0};
+    f2elm_t A24, A24num, constant1 = {0};
+	felm_t temp_scalar;
+	unsigned int bit = 0, nbits;
+	digit_t mask,prev;
+	unsigned int i;
+
+	if (AliceOrBob == ALICE) {
+		nbits = CurveIsogeny->oAbits;
+	} else if (AliceOrBob == BOB) {
+		nbits = CurveIsogeny->oBbits;
+	} else {
+		return CRYPTO_ERROR_INVALID_PARAMETER;
+	}
+
+	fpcopy751(CurveIsogeny->Montgomery_one, constant1[0]);
+	fp2add751(constant1, constant1, constant1);                  // constant = 2
+	fp2add751(A, constant1, A24num);
+	fp2div2_751(A24num, A24);
+	fp2div2_751(A24, A24);
+
+	// Initializing with the points
+	// W <= P; R2<=P-Q; R0 <=Q
+	fp2copy751( xP, W->X);	fpcopy751(CurveIsogeny->Montgomery_one, W->Z[0]);fpzero751(W->Z[1]);
+	fp2copy751(xPQ, R2->X);	fpcopy751(CurveIsogeny->Montgomery_one, R2->Z[0]);fpzero751(R2->Z[1]);
+	fp2copy751( xQ, R0->X);	fpcopy751(CurveIsogeny->Montgomery_one, R0->Z[0]);fpzero751(R0->Z[1]);
+
+	copy_words(m, temp_scalar, NWORDS_ORDER);
+
+	prev = 0;
+	for (i = 0; i < nbits; i++) {
+		bit = (unsigned int)(temp_scalar[0]&0x1);
+		mp_shiftr1(temp_scalar, NWORDS_ORDER);
+		mask = 0 - (digit_t)(bit^prev);
+		swap_points(W, R2, mask);
+		prev = bit;
+		xDBLADD_full(R0, R2, W, A24);
+	}
+	mask = 0 - (digit_t)(prev);
+	swap_points(W, R2, mask);
+
+	return CRYPTO_SUCCESS;
+}
+
+inline CRYPTO_STATUS ladder_3_pt(const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny)
+{
+#if defined __NO_R2L__
+	/**
+	 * Original function of SIDHv2 library.
+	 * 3-point ladder multiplication using algorithm of De Feo et al.
+	 */
+	return original_ladder_3_pt(xP,xQ,xPQ,m,AliceOrBob,W,A,CurveIsogeny);
+#else
+	/**
+	 * Update:
+	 * FLOR-SIDH-x64 - New right to left (R2L) algorithm.
+	 *
+	 * A right to left ladder for computing P+[k]Q.
+	 * This version uses one differential additions and
+	 * one doubling per iteration.
+	 */
+	return r2l_ladder_3_pt(xP,xQ,xPQ,m,AliceOrBob,W,A,CurveIsogeny);
+#endif
+}
 
 void get_4_isog(const point_proj_t P, f2elm_t A, f2elm_t C, f2elm_t* coeff)
 { // Computes the corresponding 4-isogeny of a projective Montgomery point (X4:Z4) of order 4.
@@ -444,10 +1266,11 @@ void first_4_isog(point_proj_t P, const f2elm_t A, f2elm_t Aout, f2elm_t Cout, P
 }
 
 
-void xTPL(const point_proj_t P, point_proj_t Q, const f2elm_t A24, const f2elm_t C24)
+void original_xTPL(const point_proj_t P, point_proj_t Q, const f2elm_t A24, const f2elm_t C24)
 { // Tripling of a Montgomery point in projective coordinates (X:Z).
   // Input: projective Montgomery x-coordinates P = (X:Z), where x=X/Z and Montgomery curve constant A/C.
   // Output: projective Montgomery x-coordinates Q = 3*P = (X3:Z3).
+  // Cost: 8M+4S+8A
     f2elm_t t0, t1, t2, t3, t4, t5;
 
     fp2sub751(P->X, P->Z, t2);                         // t2 = X-Z           
@@ -473,6 +1296,80 @@ void xTPL(const point_proj_t P, point_proj_t Q, const f2elm_t A24, const f2elm_t
     fp2copy751(t4, Q->Z);                              // Z3 = t4
 }
 
+void xTPL_basefield(const point_basefield_proj_t P, point_basefield_proj_t  Q, const felm_t A24, const felm_t C24)
+{
+	/**
+	 * Update:
+	 * FLOR-SIDH-x64 New formulas for point tripling
+	 *
+	 * These are improve formulas for Montgomery point tripling
+	 * Pre-reqs: Compute A24 = A-2C and C24 = 2C
+	 * Cost: 7M + 5S + 9A in Fp
+	 */
+	// New Tripling of a Montgomery point in projective coordinates (X:Z).
+	// Input: projective Montgomery x-coordinates P = (X:Z), where x=X/Z and Montgomery curve constant A/C.
+	// Output: projective Montgomery x-coordinates Q = 3*P = (X3:Z3).
+	felm_t t0, t1, t2, t3, t4, t5;
+	fpsqr751_mont(P->X,t0);         // t0 = x**2
+	fpsqr751_mont(P->Z,t1);         // t1 = z**2
+	fpadd751(P->X,P->Z,t2);         // t2 = x + z      # (X+Z)
+	fpsqr751_mont(t2,t2);           // t2 = t2**2      # (X+Z)^2
+	fpadd751(t0,t1,t3);             // t3 = t0 + t1    # X^2 + Z^2
+	fpsub751(t2,t3,t4);             // t4 = t2 - t3    # 2X*Z
+	fpmul751_mont(A24,t4,t5);       // t5 = (A-2*C)*t4 # 2(A-2C) (2*X*Z)
+	fpmul751_mont(C24,t2,t2);       // t2 =   (2*C)*t2 # 2C * (X+Z)^2
+	fpadd751(t5,t2,t5);             // t5 = t2 + t5    # 2C*(X+Z)^2 + (A-2C) 2X*Z
+	fpadd751(t5,t5,t5);             // t5 = 2*t5       # 2 ( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fpadd751(t5,t5,t5);             // t5 = 4*t5       # 4 ( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fpmul751_mont(t0,t5,t0);        // t0 = t0 * t5    # X^2 *4( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fpmul751_mont(t1,t5,t1);        // t1 = t1 * t5    # Z^2 *4( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fpsub751(t3,t4,t4);             // t4 = t3 - t4    # (X-Z)^2
+	fpmul751_mont(t2,t4,t2);        // t2 = t2 * t4    # 2C(X+Z)^2*(X-Z)^2
+	fpsub751(t2,t0,t0);             // t0 = t2 - t0
+	fpsub751(t2,t1,t1);             // t1 = t2 - t1
+	fpsqr751_mont(t0,t0);           // t0 = t0**2
+	fpsqr751_mont(t1,t1);           // t1 = t1**2
+	fpmul751_mont(P->X,t1,Q->X);    // x3 = x * t1     # X* [ 2C(X+Z)^2*(X-Z)^2 - 4( 2C(X+Z)^2 + (A-2C) 2X*Z)*Z^2]^2
+	fpmul751_mont(P->Z,t0,Q->Z);    // z3 = z * t0     # Z* [ 2C(X+Z)^2*(X-Z)^2 - 4( 2C(X+Z)^2 + (A-2C) 2X*Z)*X^2]^2
+}
+
+void xTPL(const point_proj_t P, point_proj_t Q, const f2elm_t A24, const f2elm_t C24)
+{
+	/**
+	 * Update:
+	 * FLOR-SIDH-x64 New formulas for point tripling
+	 *
+	 * These are improve formulas for Montgomery point tripling
+	 * Pre-reqs: Compute A24 = A-2C and C24 = 2C
+	 * Cost: 7M + 5S + 9A in Fp2
+	 */
+	// New Tripling of a Montgomery point in projective coordinates (X:Z).
+	// Input: projective Montgomery x-coordinates P = (X:Z), where x=X/Z and Montgomery curve constant A/C.
+	// Output: projective Montgomery x-coordinates Q = 3*P = (X3:Z3).
+	f2elm_t t0, t1, t2, t3, t4, t5;
+	fp2sqr751_mont(P->X,t0);         // t0 = x**2
+	fp2sqr751_mont(P->Z,t1);         // t1 = z**2
+	fp2add751(P->X,P->Z,t2);         // t2 = x + z      # (X+Z)
+	fp2sqr751_mont(t2,t2);           // t2 = t2**2      # (X+Z)^2
+	fp2add751(t0,t1,t3);             // t3 = t0 + t1    # X^2 + Z^2
+	fp2sub751(t2,t3,t4);             // t4 = t2 - t3    # 2X*Z
+	fp2mul751_mont(A24,t4,t5);       // t5 = (A-2*C)*t4 # 2(A-2C) (2*X*Z)
+	fp2mul751_mont(C24,t2,t2);       // t2 =   (2*C)*t2 # 2C * (X+Z)^2
+	fp2add751(t5,t2,t5);             // t5 = t2 + t5    # 2C*(X+Z)^2 + (A-2C) 2X*Z
+	fp2add751(t5,t5,t5);             // t5 = 2*t5       # 2 ( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fp2add751(t5,t5,t5);             // t5 = 4*t5       # 4 ( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fp2mul751_mont(t0,t5,t0);        // t0 = t0 * t5    # X^2 *4( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fp2mul751_mont(t1,t5,t1);        // t1 = t1 * t5    # Z^2 *4( 2C*(X+Z)^2 + (A-2C) 2X*Z )
+	fp2sub751(t3,t4,t4);             // t4 = t3 - t4    # (X-Z)^2
+	fp2mul751_mont(t2,t4,t2);        // t2 = t2 * t4    # 2C(X+Z)^2*(X-Z)^2
+	fp2sub751(t2,t0,t0);             // t0 = t2 - t0
+	fp2sub751(t2,t1,t1);             // t1 = t2 - t1
+	fp2sqr751_mont(t0,t0);           // t0 = t0**2
+	fp2sqr751_mont(t1,t1);           // t1 = t1**2
+	fp2mul751_mont(P->X,t1,Q->X);    // x3 = x * t1     # X* [ 2C(X+Z)^2*(X-Z)^2 - 4( 2C(X+Z)^2 + (A-2C) 2X*Z)*Z^2]^2
+	fp2mul751_mont(P->Z,t0,Q->Z);    // z3 = z * t0     # Z* [ 2C(X+Z)^2*(X-Z)^2 - 4( 2C(X+Z)^2 + (A-2C) 2X*Z)*X^2]^2
+}
+
 
 void xTPLe(const point_proj_t P, point_proj_t Q, const f2elm_t A, const f2elm_t C, const int e)
 { // Computes [3^e](X:Z) on Montgomery curve with projective constant via e repeated triplings.
@@ -480,10 +1377,12 @@ void xTPLe(const point_proj_t P, point_proj_t Q, const f2elm_t A, const f2elm_t 
   // Output: projective Montgomery x-coordinates Q <- (3^e)*P.
     f2elm_t A24, C24;
     int i;
-    
-    fp2add751(C, C, A24);                           
-    fp2add751(A24, A24, C24);                    
-    fp2add751(A24, A, A24);       
+
+    /**
+     * For new tripling formula compute A24= A-2C, C24 = 2C
+     */
+    fp2add751(C, C, C24);     //C24 = 2c
+    fp2sub751(A,C24, A24);    //A24 = A-2C
     copy_words((digit_t*)P, (digit_t*)Q, 2*2*NWORDS_FIELD);
 
     for (i = 0; i < e; i++) {
@@ -859,8 +1758,10 @@ static void get_3_torsion_elt(f2elm_t A, unsigned int* r, point_proj_t P, point_
 	fp2copy751(P->X, PP->X);                         // XX = X
     fp2copy751(P->Z, PP->Z);                         // ZZ = Z
 
-    fp2add751(A, C24, A24);                          // A24 = A+2
-    fpadd751(C24[0], C24[0], C24[0]);                // C24 = 4
+    /**
+     *  new_TPL  A24 = A-2, C24 = 2C, C=1
+     */
+    fp2sub751(A, C24, A24);                          // A24 = A-2
 
 	fp2correction751(PP->Z);
     while (fpequal751_non_constant_time(PP->Z[0], zero) == false || fpequal751_non_constant_time(PP->Z[1], zero) == false) {
@@ -2257,3 +3158,5 @@ void decompress_3_torsion(const unsigned char* SecretKey, const unsigned char* C
     fp2copy751(P->X, R->X);               
     fp2copy751(P->Z, R->Z);
 }
+
+

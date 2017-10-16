@@ -19,9 +19,23 @@ else ifeq "$(ARCH)" "ARM64"
     ARCHITECTURE=_ARM64_
 endif
 
+ifeq "$(ARCH_EX)" "haswell"
+    ARCH_EXTRA=__HASWELL__
+else ifeq "$(ARCH_EX)" "skylake"
+    ARCH_EXTRA=__SKYLAKE__
+else ifeq "$(ARCH_EX)" "native"
+    ARCH_EXTRA=__NATIVE__
+endif
+
 ADDITIONAL_SETTINGS=
 ifeq "$(SET)" "EXTENDED"
     ADDITIONAL_SETTINGS=-fwrapv -fomit-frame-pointer -march=native
+endif
+
+ifeq "$(ARCH_EX)" "haswell"
+	ADDITIONAL_SETTINGS+= -march=haswell -m64 -mbmi2
+else ifeq "$(ARCH_EX)" "skylake"
+	ADDITIONAL_SETTINGS+= -march=skylake -m64 -mbmi2 -madx
 endif
 
 ifeq "$(GENERIC)" "TRUE"
@@ -37,13 +51,18 @@ ifeq "$(ARCH)" "ARM64"
 endif
 
 cc=$(COMPILER)
-CFLAGS=-c $(OPT) $(ADDITIONAL_SETTINGS) -D $(ARCHITECTURE) -D __LINUX__ $(USE_GENERIC)
+CFLAGS=-c $(OPT) $(ADDITIONAL_SETTINGS) -D $(ARCHITECTURE) -D __LINUX__ $(USE_GENERIC) -D $(ARCH_EXTRA)
 LDFLAGS=
 ifeq "$(GENERIC)" "TRUE"
     EXTRA_OBJECTS=fp_generic.o
 else
 ifeq "$(ARCH)" "x64"
     EXTRA_OBJECTS=fp_x64.o fp_x64_asm.o
+    ifeq "$(ARCH_EX)" "haswell"
+    	EXTRA_OBJECTS+= ZREDC_6x4_SH_HW.o
+    else ifeq "$(ARCH_EX)" "skylake"
+    	EXTRA_OBJECTS+= ZREDC_6x4_SH_SK.o
+	endif
 endif
 ifeq "$(ARCH)" "ARM64"
     EXTRA_OBJECTS=fp_arm64.o fp_arm64_asm.o
@@ -88,6 +107,17 @@ ifeq "$(ARCH)" "x64"
 
     fp_x64_asm.o: AMD64/fp_x64_asm.S
 	    $(CC) $(CFLAGS) AMD64/fp_x64_asm.S
+
+ifeq "$(ARCH_EX)" "haswell"
+
+    ZREDC_6x4_SH_HW.o: AMD64/ZMULT_HW.h AMD64/ZREDC_6x4_SH_HW.S
+	    $(CC) $(CFLAGS) AMD64/ZREDC_6x4_SH_HW.S
+
+else ifeq "$(ARCH_EX)" "skylake"
+
+    ZREDC_6x4_SH_SK.o: AMD64/ZMULT_SK.h AMD64/ZREDC_6x4_SH_SK.S
+	    $(CC) $(CFLAGS) AMD64/ZREDC_6x4_SH_SK.S
+endif
 endif
 ifeq "$(ARCH)" "ARM64"
     fp_arm64.o: ARM64/fp_arm64.c
@@ -110,5 +140,5 @@ kex_tests.o: tests/kex_tests.c SIDH.h
 .PHONY: clean
 
 clean:
-	rm -f arith_test kex_test fp_generic.o fp_x64.o fp_x64_asm.o fp_arm64.o fp_arm64_asm.o $(OBJECTS_ALL)
+	rm -f arith_test kex_test fp_generic.o fp_x64.o fp_x64_asm.o fp_arm64.o fp_arm64_asm.o ZREDC_6x4_SH_SK.o ZREDC_6x4_SH_HW.o $(OBJECTS_ALL)
 

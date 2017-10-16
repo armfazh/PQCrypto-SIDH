@@ -62,7 +62,7 @@ void to_mont(const felm_t a, felm_t mc)
   // mc = a*R^2*R^(-1) mod p751 = a*R mod p751, where a in [0, p751-1].
   // The Montgomery constant R^2 mod p751 is the global value "Montgomery_R2". 
 
-    fpmul751_mont(a, (digit_t*)&Montgomery_R2, mc);
+    fpmul751_mont(a, Montgomery_R2, mc);
 }
 
 
@@ -210,7 +210,7 @@ void fpsqr751_mont(const felm_t ma, felm_t mc)
 { // 751-bit Comba multi-precision squaring, c = a^2 mod p751.
     dfelm_t temp = {0};
 
-    mp_mul(ma, ma, temp, NWORDS_FIELD);
+    mp_sqr(ma, ma, temp, NWORDS_FIELD);
     rdc_mont(temp, mc);
 }
 
@@ -530,6 +530,7 @@ void fp2mul751_mont(const f2elm_t a, const f2elm_t b, f2elm_t c)
 { // GF(p751^2) multiplication using Montgomery arithmetic, c = a*b in GF(p751^2).
   // Inputs: a = a0+a1*i and b = b0+b1*i, where a0, a1, b0, b1 are in [0, 2*p751-1] 
   // Output: c = c0+c1*i, where c0, c1 are in [0, 2*p751-1] 
+#if defined __NATIVE__
     felm_t t1, t2;
     dfelm_t tt1, tt2, tt3; 
     digit_t mask;
@@ -550,6 +551,9 @@ void fp2mul751_mont(const f2elm_t a, const f2elm_t b, f2elm_t c)
     mp_mul(t1, t2, tt2, NWORDS_FIELD);               // tt2 = (a0+a1)*(b0+b1)
     mp_sub(tt2, tt1, tt2, 2*NWORDS_FIELD);           // tt2 = (a0+a1)*(b0+b1) - a0*b0 - a1*b1 
     rdc_mont(tt2, c[1]);                             // c[1] = (a0+a1)*(b0+b1) - a0*b0 - a1*b1 
+#else
+    Mult_Fp2(c, a, b);
+#endif
 }
 
 
@@ -636,6 +640,29 @@ void swap_points(point_proj_t P, point_proj_t Q, const digit_t option)
         temp = option & (P->Z[1][i] ^ Q->Z[1][i]);
         P->Z[1][i] = temp ^ P->Z[1][i]; 
         Q->Z[1][i] = temp ^ Q->Z[1][i]; 
+    }
+}
+
+
+void swap_points_affine(point_t P, point_t Q, const digit_t option)
+{ // Swap points.
+    // If option = 0 then P <- P and Q <- Q, else if option = 0xFF...FF then P <- Q and Q <- P
+    digit_t temp;
+    unsigned int i;
+
+    for (i = 0; i < NWORDS_FIELD; i++) {
+        temp = option & (P->x[0][i] ^ Q->x[0][i]);
+        P->x[0][i] = temp ^ P->x[0][i];
+        Q->x[0][i] = temp ^ Q->x[0][i];
+        temp = option & (P->y[0][i] ^ Q->y[0][i]);
+        P->y[0][i] = temp ^ P->y[0][i];
+        Q->y[0][i] = temp ^ Q->y[0][i];
+        temp = option & (P->x[1][i] ^ Q->x[1][i]);
+        P->x[1][i] = temp ^ P->x[1][i];
+        Q->x[1][i] = temp ^ Q->x[1][i];
+        temp = option & (P->y[1][i] ^ Q->y[1][i]);
+        P->y[1][i] = temp ^ P->y[1][i];
+        Q->y[1][i] = temp ^ Q->y[1][i];
     }
 }
 

@@ -261,7 +261,12 @@ void mp_mul_schoolbook(const digit_t* a, const digit_t* b, digit_t* c, const uns
 // Multiprecision comba multiply, c = a*b, where lng(a) = lng(b) = nwords.
 void mp_mul_comba(const digit_t* a, const digit_t* b, digit_t* c, const unsigned int nwords);
 
-void multiply(const digit_t* a, const digit_t* b, digit_t* c, const unsigned int nwords); 
+// Multiprecision square, c = a*b, where a = b and lng(a) = lng(b) = nwords.
+extern void mp_sqr(const digit_t* a, const digit_t* b, digit_t* c, const unsigned int nwords);
+
+void multiply(const digit_t* a, const digit_t* b, digit_t* c, const unsigned int nwords);
+
+void mp_sqr(const digit_t* a, const digit_t* b, digit_t* c, const unsigned int nwords);
 
 // Montgomery multiplication modulo the group order, mc = ma*mb*r' mod order, where ma,mb,mc in [0, order-1]
 void Montgomery_multiply_mod_order(const digit_t* ma, const digit_t* mb, digit_t* mc, const digit_t* order, const digit_t* Montgomery_rprime);
@@ -396,6 +401,9 @@ void sqr_Fp2_cycl(f2elm_t a, const felm_t one);
 // Cyclotomic inversion, a^(p+1) = 1 => a^(-1) = a^p = a0 - i*a1
 extern void inv_Fp2_cycl(f2elm_t a);
 
+void Mult_Fp2(f2elm_t c, const f2elm_t a, const f2elm_t b);
+void Sqr_Fp2(f2elm_t c, const f2elm_t a);
+
 // Check if GF(p751^2) element is cube
 bool is_cube_Fp2(f2elm_t u, PCurveIsogenyStruct CurveIsogeny);
 
@@ -421,12 +429,14 @@ void swap_points_basefield(point_basefield_proj_t P, point_basefield_proj_t Q, c
 
 // Swap points
 void swap_points(point_proj_t P, point_proj_t Q, const digit_t option);
+void swap_points_affine(point_t P, point_t Q, const digit_t option);
 
 // Computes the j-invariant of a Montgomery curve with projective constant.
 void j_inv(const f2elm_t A, const f2elm_t C, f2elm_t jinv);
 
 // Simultaneous doubling and differential addition.
 void xDBLADD(point_proj_t P, point_proj_t Q, const f2elm_t xPQ, const f2elm_t A24);
+void xDBLADD_full(point_proj_t P, point_proj_t Q, const point_proj_t PQ, const f2elm_t A24);
 
 // Doubling of a Montgomery point in projective coordinates (X:Z).
 void xDBL(const point_proj_t P, point_proj_t Q, const f2elm_t A24, const f2elm_t C24);
@@ -451,9 +461,17 @@ void ladder(const felm_t x, digit_t* m, point_basefield_proj_t P, point_basefiel
 
 // Computes key generation entirely in the base field
 CRYPTO_STATUS secret_pt(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny);
+CRYPTO_STATUS original_secret_pt(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny);
+CRYPTO_STATUS right2left_secret_pt(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny);
+CRYPTO_STATUS precmp_secret_pt_Fp2(const point_basefield_t P, const digit_t* m, const unsigned int AliceOrBob, point_proj_t R, PCurveIsogenyStruct CurveIsogeny);
+
+// computes the y-coordinate recovering
+void y_recovering(point_t P,point_proj_t Q,point_proj_t Q_add_P,point_proj_t Q_sub_P,point_full_proj_t full_Q);
 
 // Computes P+[m]Q via x-only arithmetic.
-CRYPTO_STATUS ladder_3_pt(const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny);
+CRYPTO_STATUS original_ladder_3_pt(const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny);
+CRYPTO_STATUS r2l_ladder_3_pt     (const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny);
+CRYPTO_STATUS ladder_3_pt         (const f2elm_t xP, const f2elm_t xQ, const f2elm_t xPQ, const digit_t* m, const unsigned int AliceOrBob, point_proj_t W, const f2elm_t A, PCurveIsogenyStruct CurveIsogeny);
 
 // Computes the corresponding 4-isogeny of a projective Montgomery point (X4:Z4) of order 4.
 void get_4_isog(const point_proj_t P, f2elm_t A, f2elm_t C, f2elm_t* coeff);
@@ -466,6 +484,8 @@ void first_4_isog(point_proj_t P, const f2elm_t A, f2elm_t Aout, f2elm_t Cout, P
 
 // Tripling of a Montgomery point in projective coordinates (X:Z).
 void xTPL(const point_proj_t P, point_proj_t Q, const f2elm_t A24, const f2elm_t C24);
+void original_xTPL(const point_proj_t P, point_proj_t Q, const f2elm_t A24, const f2elm_t C24);
+void xTPL_basefield(const point_basefield_proj_t P, point_basefield_proj_t  Q, const felm_t A24, const felm_t C24);
 
 // Computes [3^e](X:Z) on Montgomery curve with projective constant via e repeated triplings.
 void xTPLe(const point_proj_t P, point_proj_t Q, const f2elm_t A, const f2elm_t C, const int e);
