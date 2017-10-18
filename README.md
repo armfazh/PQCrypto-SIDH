@@ -22,13 +22,13 @@ This software library is a C-language + optimized assembly code that supports an
 This source code is part of the research work titled: 
 *"A Faster Software Implementation of the Supersingular Isogeny Diffie-Hellman Key Exchange Protocol"*
 by the authors:
- * Armando Faz-Hernández, University of Campinas, Brazil.
- * Julio López, University of Campinas, Brazil.
- * Eduardo Ochoa-Jiménez, Computer Science Department, Cinvestav-IPN, Mexico.
- * Francisco Rodríguez-Henríquez, Computer Science Department, Cinvestav-IPN, Mexico.
+ * [Armando Faz-Hernández](http://www.ic.unicamp.br/~armfazh), University of Campinas, Brazil.
+ * [Julio López](http://www.ic.unicamp.br/pessoas/docentes/jlopez), University of Campinas, Brazil.
+ * [Eduardo Ochoa-Jiménez](https://twitter.com/_Eduardo_Ochoa), Computer Science Department, Cinvestav-IPN, Mexico.
+ * [Francisco Rodríguez-Henríquez](http://delta.cs.cinvestav.mx/~francisco/), Computer Science Department, Cinvestav-IPN, Mexico.
 
 
-A pre-print of this document can be found at the IACR ePrint Archive: http://iacr.eprint.org/2017/xxx [[PDF](https://eprint.iacr.org/2017/)]
+A pre-print of this document can be found at the IACR ePrint Archive: http://iacr.eprint.org/2017/1015 [[PDF](https://eprint.iacr.org/2017/1015)]
  
 
 ---
