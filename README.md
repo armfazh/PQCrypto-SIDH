@@ -28,7 +28,7 @@ by the authors:
  * [Francisco Rodríguez-Henríquez](http://delta.cs.cinvestav.mx/~francisco/), Computer Science Department, Cinvestav-IPN, Mexico.
 
 
-A pre-print of this document can be found at the IACR ePrint Archive: http://iacr.eprint.org/2017/1015 [[PDF](https://eprint.iacr.org/2017/1015)]
+A pre-print of this document can be found at the IACR ePrint Archive: http://eprint.iacr.org/2017/1015 [[PDF](https://eprint.iacr.org/2017/1015.pdf)]
  
 
 ---
