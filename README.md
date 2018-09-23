@@ -1,16 +1,16 @@
 # FLOR-SIDH-x64
 
-This is a fork of the [PQCrypto-SIDH](https://github.com/Microsoft/PQCrypto-SIDH) project of Microsoft.
 
-This software library is a C-language + optimized assembly code that supports an instance of the Super-Singular Isogeny Diffie-Hellman algorithm proposed by Costelo, Longa and Naehrig on CRYPTO 2016.
+This software library contains C-language + optimized assembly code for implementing the Super-Singular Isogeny Diffie-Hellman algorithm proposed by Jao, De Feo and Plût.
 
+The code base is forked from the [PQCrypto-SIDH](https://github.com/Microsoft/PQCrypto-SIDH) project of Microsoft introduced by Costelo, Longa and Naehrig on CRYPTO 2016.
 
 ----
 
 ### Additional contributions
  * Improved Calculation of the P+[k]Q operation. 
-    * A right-to-left ladder replaces the 3-point ladder algorithm of De Feo et al. accelerating the shared secret phase.
-    * A right-to-left ladder with precomputation tables that accelerate key generation phase.
+    * A new right-to-left ladder replaces the 3-point ladder algorithm of De Feo et al. accelerating the shared secret phase.
+    * A new right-to-left ladder with precomputation tables that accelerate key generation phase.
  * New point tripling formulas for Montgomery curves. An improvement of 1M-1S-1A operations in Fp2. 
  * Efficient implementation of arithmetic operations of Fp and Fp2 using MULX and ADCX/ADOX instructions.
     * Around 25% of improvement on Haswell and Skylake processors. 
