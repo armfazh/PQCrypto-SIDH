@@ -20,16 +20,37 @@ The code base is forked from the [PQCrypto-SIDH](https://github.com/Microsoft/PQ
 ### Research Resources
 
 This source code is part of the research work titled: 
-*"A Faster Software Implementation of the Supersingular Isogeny Diffie-Hellman Key Exchange Protocol"*
-by the authors:
+*"A Faster Software Implementation of the Supersingular Isogeny Diffie-Hellman Key Exchange Protocol"* published at IEEE Transactions on Computers journal by the authors:
  * [Armando Faz-Hernández](http://www.ic.unicamp.br/~armfazh), University of Campinas, Brazil.
  * [Julio López](http://www.ic.unicamp.br/pessoas/docentes/jlopez), University of Campinas, Brazil.
  * [Eduardo Ochoa-Jiménez](https://twitter.com/_Eduardo_Ochoa), Computer Science Department, Cinvestav-IPN, Mexico.
  * [Francisco Rodríguez-Henríquez](http://delta.cs.cinvestav.mx/~francisco/), Computer Science Department, Cinvestav-IPN, Mexico.
 
+DOI: [10.1109/TC.2017.2771535](https://doi.org/10.1109/TC.2017.2771535).
 
-A pre-print of this document can be found at the IACR ePrint Archive: http://eprint.iacr.org/2017/1015 [[PDF](https://eprint.iacr.org/2017/1015.pdf)]
- 
+IACR ePrint Archive: [[PDF](https://eprint.iacr.org/2017/1015.pdf)]
+
+To cite this work use:
+
+```tex
+@inproceedings{flor_sidh,
+    author    = {A. Faz-Hern\'{a}ndez and J. L\'{o}pez and 
+                 E. Ochoa-Jim\'{e}nez and F. Rodr\'{i}guez-Henr\'{i}quez},
+    title     = {A Faster Software Implementation of the Supersingular
+                 Isogeny Diffie-Hellman Key Exchange Protocol},
+    year      = {2018},
+    journal   = {IEEE Transactions on Computers},
+    publisher = {IEEE},
+    volume    = {67},
+    number    = {11},
+    pages     = {1622-1636},
+    month     = {Nov},
+    keywords  = {sidh protocol, montgomery ladder, post-quantum cryptography,
+                 montgomery reduction},
+    doi       = {10.1109/TC.2017.2771535},
+    url       = {http://doi.org/10.1109/TC.2017.2771535},
+}    
+```
 
 ---
 
@@ -104,7 +125,7 @@ $ make ARCH=x64 CC=[gcc/clang] GENERIC=FALSE SET=EXTENDED ASM=TRUE ARCH_EX=nativ
 
 
 ### License 
-GNU Lesser General Public License v3.0 ([LICENSE](https://www.gnu.org/licenses/lgpl-3.0.txt))
+MIT License
 
 ----
 
