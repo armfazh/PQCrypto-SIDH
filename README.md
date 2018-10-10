@@ -1,18 +1,17 @@
 # FLOR-SIDH-x64
 
-
-This software library contains C-language + optimized assembly code for implementing the Super-Singular Isogeny Diffie-Hellman algorithm proposed by Jao, De Feo and Plût.
+This software library contains C-language + optimized x86_64 assembly code for implementing the Super-Singular Isogeny Diffie-Hellman algorithm proposed by Jao, De Feo and Plût.
 
 The code base is forked from the [PQCrypto-SIDH](https://github.com/Microsoft/PQCrypto-SIDH) project of Microsoft introduced by Costelo, Longa and Naehrig on CRYPTO 2016.
 
 ----
 
 ### Additional contributions
- * Improved Calculation of the P+[k]Q operation. 
+ * New **Three-Point Ladder algorithm** to calculate P+[k]Q operation. 
     * A new right-to-left ladder replaces the 3-point ladder algorithm of De Feo et al. accelerating the shared secret phase.
     * A new right-to-left ladder with precomputation tables that accelerate key generation phase.
- * New point tripling formulas for Montgomery curves. An improvement of 1M-1S-1A operations in Fp2. 
- * Efficient implementation of arithmetic operations of Fp and Fp2 using MULX and ADCX/ADOX instructions.
+ * New **Point-Tripling Formula** for Montgomery curves. An improvement of 1M-1S-1A operations in Fp2. 
+ * **Optimized implementation** of arithmetic operations of Fp and Fp2 using MULX and ADCX/ADOX instructions.
     * Around 25% of improvement on Haswell and Skylake processors. 
 
 ---
@@ -28,12 +27,12 @@ This source code is part of the research work titled:
 
 DOI: [10.1109/TC.2017.2771535](https://doi.org/10.1109/TC.2017.2771535).
 
-IACR ePrint Archive: [[PDF](https://eprint.iacr.org/2017/1015.pdf)]
+IACR ePrint Archive: [[PDF](https://eprint.iacr.org/2017/1015)]
 
 To cite this work use:
 
 ```tex
-@inproceedings{flor_sidh,
+@article{flor_sidh_x64,
     author    = {A. Faz-Hern\'{a}ndez and J. L\'{o}pez and 
                  E. Ochoa-Jim\'{e}nez and F. Rodr\'{i}guez-Henr\'{i}quez},
     title     = {A Faster Software Implementation of the Supersingular
